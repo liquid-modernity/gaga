@@ -135,29 +135,31 @@
     if(show){ sidebarRight.style.transform='translateX(0)'; sidebarRight.style.right='0'; sidebarRight.style.left='auto'; }
     else{ sidebarRight.style.transform=''; sidebarRight.style.right=''; sidebarRight.style.left=''; }
   }
-  function toggleLeft(force){
-    var show = typeof force==='boolean'?force:sidebarLeft.hasAttribute('hidden');
-    setHidden(sidebarLeft,!show); void sidebarLeft.offsetWidth;
-    sidebarLeft.classList.toggle('is-open',show);
-    show?openOverlay():closeOverlay(); trapFocus(sidebarLeft,show);
-  }
-  function toggleRight(force){
+ /* ==== Sidebar -> push grid via CSS variables ==== */
+function syncSidebarVars(){
+  var desktop = window.innerWidth > 1024;
+  document.body.style.setProperty('--sb-left',
+    (!sidebarLeft.hasAttribute('hidden')  && desktop) ? (getComputedStyle(document.body).getPropertyValue('--w-left')  || '280px') : '0px');
+  document.body.style.setProperty('--sb-right',
+    (!sidebarRight.hasAttribute('hidden') && desktop) ? (getComputedStyle(document.body).getPropertyValue('--w-right') || '360px') : '0px');
+}
+
+function toggleLeft(force){
+  var show = typeof force==='boolean' ? force : sidebarLeft.hasAttribute('hidden');
+  setHidden(sidebarLeft, !show);
+  sidebarLeft.classList.toggle('is-open', show);
+  show ? openOverlay() : closeOverlay();
+  trapFocus(sidebarLeft, show);
+  syncSidebarVars();
+}
+
+function toggleRight(force){
   var show = typeof force==='boolean' ? force : sidebarRight.hasAttribute('hidden');
   setHidden(sidebarRight, !show);
-  void sidebarRight.offsetWidth; // reflow
   sidebarRight.classList.toggle('is-open', show);
-  if (show) {
-    sidebarRight.style.transform = 'translateX(0)';
-    sidebarRight.style.right = '0';
-    sidebarRight.style.left = 'auto';
-    openOverlay();
-  } else {
-    sidebarRight.style.transform = '';
-    sidebarRight.style.right = '';
-    sidebarRight.style.left = '';
-    closeOverlay();
-  }
+  show ? openOverlay() : closeOverlay();
   trapFocus(sidebarRight, show);
+  syncSidebarVars();
 }
 
   // ---- Renderers ----
@@ -372,14 +374,107 @@
     if(document.activeElement===chatInput && e.key==='ArrowUp' && !chatInput.value){ chatInput.value=lastSent; chatInput.selectionStart=chatInput.selectionEnd=chatInput.value.length; }
   });
 
-  // setelah deklarasi function measureChatbar()
-var ro;
-try {
-  ro = new ResizeObserver(function(){ measureChatbar(); });
-  if (chatbar) ro.observe(chatbar);
-} catch(e) {
-  // fallback: resize events sudah ada
+/* ==== Chatbar height observer (hindari overlap & saat keyboard muncul) ==== */
+(function(){
+  try{
+    var ro = new ResizeObserver(function(){ measureChatbar(); });
+    chatbar && ro.observe(chatbar);
+  }catch(e){ /* fallback ke resize event */ }
+})();
+
+/* ==== Hilangkan “Semua Label” wrapper kalau masih ada ==== */
+(function dropAllLabel(){
+  var wrap = document.getElementById('labelDrop');
+  if(!wrap) return;
+  // pastikan container list (#labelList) tampil top-level
+  // (kita biarkan sebagai nav biasa; summary disembunyikan via CSS)
+  wrap.open = true;
+})();
+
+/* ==== Label utama => klik => dropdown posting A–Z (2 level saja) ==== */
+function buildLabelsDropdown(allPosts){
+  var counts = {};
+  allPosts.forEach(function(p){ (p.labels||[]).forEach(function(l){ counts[l]=(counts[l]||0)+1; }); });
+  var labels = Object.keys(counts).sort(function(a,b){ return a.localeCompare(b,'id'); });
+
+  var host = document.getElementById('labelList');
+  if(!labels.length){ host.innerHTML = "<p class='small'>Belum ada label.</p>"; return; }
+
+  host.innerHTML = labels.map(function(l,idx){
+    return (
+      "<details class='accordion label-acc' data-label='"+l+"' id='lab-"+idx+"'>"+
+        "<summary><span class='acc-title'><svg width='18' height='18'><use href='#i-tag' xlink:href='#i-tag'/></svg> "+l+"</span>"+
+        "<span class='count small'>"+counts[l]+"</span></summary>"+
+        "<div class='posts-under-label' aria-live='polite' style='margin-top:8px'></div>"+
+      "</details>"
+    );
+  }).join('');
+
+  $$('.label-acc', host).forEach(function(d){
+    d.addEventListener('toggle', function(){
+      if(!d.open) return;
+      var lab = d.getAttribute('data-label');
+      var holder = $('.posts-under-label', d);
+      if(holder && !holder.hasChildNodes()){
+        holder.innerHTML = "<p class='small'>Memuat…</p>";
+        fetchPostsSummary({label:lab, max:200}, function(list){
+          list.sort(function(a,b){ return (a.title||'').localeCompare(b.title||'','id'); });
+          holder.innerHTML = list.map(function(p){
+            return "<button class='page-item post-link' data-id='"+p.id+"'>"+
+                     "<svg width='16' height='16'><use href='#i-page' xlink:href='#i-page'/></svg> "+
+                     (p.title||'Tanpa judul')+"</button>";
+          }).join('');
+          $$('.post-link', holder).forEach(function(btn){
+            btn.addEventListener('click', function(){
+              var pid = btn.getAttribute('data-id');
+              renderReaderById(pid);
+              // SPA-ish route + close left on mobile
+              history.pushState(null,'','#p='+pid);
+              toggleLeft(false);
+            });
+          });
+        });
+      }
+      // tutup label lain agar rapi
+      $$('.label-acc', host).forEach(function(x){ if(x!==d) x.open=false; });
+      // SPA-ish: tandai label aktif di URL
+      history.pushState(null,'','#l='+encodeURIComponent(lab));
+    });
+  });
 }
+
+/* ==== SPA-ish routing: #p=<postId> atau #l=<label> ==== */
+function handleRoute(){
+  var h = location.hash.slice(1);
+  if(!h) return;
+  var params = new URLSearchParams(h);
+  if(params.has('p')){
+    renderReaderById(params.get('p'));
+  }else if(params.has('l')){
+    var lab = decodeURIComponent(params.get('l'));
+    var el = document.querySelector('.label-acc[data-label="'+CSS.escape(lab)+'"]');
+    if(el){ el.open = true; el.scrollIntoView({block:'start', behavior:'smooth'}); }
+  }
+}
+window.addEventListener('hashchange', handleRoute);
+window.addEventListener('popstate', handleRoute);
+
+/* ==== Pastikan feed tak ketutup chatbar & update grid var saat resize ==== */
+document.addEventListener('DOMContentLoaded', function(){
+  setTimeout(measureChatbar, 300);
+  syncSidebarVars();
+});
+window.addEventListener('resize', syncSidebarVars, {passive:true});
+
+/* ==== Saat klik “Baca” juga set hash untuk SPA feel ==== */
+/* di dalam postcardNode, setelah render dan sebelum return */
+/// ...
+// $('.act-read',card).addEventListener('click',function(){ renderReaderById(p.id); });
+$('.act-read',card).addEventListener('click',function(){
+  renderReaderById(p.id);
+  history.pushState(null,'','#p='+p.id);
+});
+/// ...
 
   
   // ---- Boot ----
