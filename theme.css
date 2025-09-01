@@ -224,4 +224,59 @@
   .chat-form { gap: 8px; }
 }
 
+/* ============= 3-column grid pushes center (desktop), overlay (mobile) ============= */
+:root { --center-min: 360px; }            /* jaga min-lebar center */
+body  { --sb-left: 0px; --sb-right: 0px;  /* akan di-set JS saat sidebar open */
+         --w-left: 280px; --w-right: 360px; }
+
+#shell.layout{
+  display:grid;
+  grid-template-columns: var(--sb-left) minmax(var(--center-min),1fr) var(--sb-right);
+  gap: var(--gap,16px);
+  align-items:start;
+}
+
+/* center scrollable; hindari kolom “1 huruf per baris” */
+.center{ min-width:0; height:100dvh; overflow:auto; -webkit-overflow-scrolling:touch; }
+.center-wrap{ min-width:0; display:flex; flex-direction:column; gap:var(--gap,16px);
+  padding:var(--center-pad,16px); }
+
+/* sidebars ukuran tetap (dipakai saat desktop push) */
+#sidebarLeft{ width:var(--w-left); }
+#sidebarRight{ width:var(--w-right); }
+
+/* feed & reader tidak boleh memaksa lebar minimum */
+.feed, .readercard, .postcard .body, .reader-body{ min-width:0; }
+
+/* Kartu & tombol di viewport sempit */
+.postcard{ grid-template-columns: 120px 1fr; }
+.postcard .title,.postcard .excerpt{ overflow-wrap:anywhere; word-break:break-word; }
+.iconbtn{ min-height:44px; min-width:44px; }
+
+/* Container query (kartu jadi kolom tunggal di lebar kecil) */
+@container (max-width:560px){
+  .postcard{ grid-template-columns:1fr; }
+  .postcard .actions .iconbtn span{ display:none; } /* sembunyikan teks tombol */
+  .postcard .actions{ flex-wrap:wrap; gap:8px; }
+}
+
+/* bottom safe-pad agar chatbar tidak menimpa konten */
+.feed{ padding-bottom: calc(var(--chatbar-h) + 24px); }
+#roomchat{ scroll-padding-bottom: calc(var(--chatbar-h) + 16px); }
+
+/* Right sidebar: pastikan terlihat saat open */
+#sidebarRight{ right:0; left:auto; will-change:transform; }
+.sidebar.is-open{ transform: translateX(0) !important; }
+
+/* Mobile/tablet: sidebars jadi overlay (tidak mendorong center) */
+@media (max-width:1024px){
+  #shell.layout{ grid-template-columns:1fr; }
+  #sidebarLeft,#sidebarRight{ position:fixed; top:0; bottom:0; height:100dvh; z-index:60; }
+  body{ --sb-left:0px; --sb-right:0px; }
+}
+
+/* Hilangkan “Semua Label” (kita pakai daftar label utama langsung) */
+#labelDrop > summary{ display:none !important; }
+#labelDrop{ padding:0; border:0; }
+
   
