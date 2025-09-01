@@ -1,605 +1,475 @@
-/*! Gaga Blog — SPA-Feel Solid — v2025-09-03 */
-(function(){'use strict';
+/*! Gaga Blog — SPA-Feel Solids — v2025-09-02 */
+(() => {
+  'use strict';
 
-  /* ===== Config ===== */
-  const BLOG_BASE = (window.GAGA_CONFIG && window.GAGA_CONFIG.blogBase) ||
-                    document.body.getAttribute('data-blog') ||
-                    'https://ratriatra.blogspot.com';
+  /* ========= Config ========= */
+  const BLOG = (window.GAGA_CONFIG && GAGA_CONFIG.blogBase) ||
+               document.body.getAttribute('data-blog') ||
+               'https://ratriatra.blogspot.com';
+  const POP_COUNT  = +document.body.dataset.popcount || 3;
+  const FEAT_COUNT = +document.body.dataset.featcount || 3;
 
-  /* ===== DOM ===== */
+  /* ========= DOM ========= */
   const $  = (s,c)=> (c||document).querySelector(s);
   const $$ = (s,c)=> Array.from((c||document).querySelectorAll(s));
-
-  const feed = $('#feed'), room = $('#roomchat');
-  const sidebarLeft  = $('#sidebarLeft');
-  const sidebarRight = $('#sidebarRight');
-  const overlay = $('#overlay');
+  const room   = $('#roomchat');
+  const left   = $('#sidebarLeft');
+  const right  = $('#sidebarRight');
+  const overlay= $('#overlay');
+  const smart  = $('#smartScroll');
+  const chatbar= $('#chatbar'); const chatForm = $('#chatForm'); const chatInput=$('#chatInput');
+  const labelList = $('#labelList'); const pageList = $('#pageList');
   const rsTabs = $$('.rs-tab'), rsMeta = $('#rs-meta'), rsToc = $('#rs-toc'), rsComments = $('#rs-comments');
-  const labelList = $('#labelList'), pageList = $('#pageList');
-  const chatbar = $('#chatbar'), chatForm = $('#chatForm'), chatInput = $('#chatInput'), filePicker = $('#filePicker');
-  const smartBtn = $('#smartScroll');
-  const dockbar = $('#dockbar'), dockSheet = $('.dock__sheet', dockbar), dockScrim = $('.dock__scrim', dockbar);
 
-            /* ===== Config (tambahan) ===== */
-const POP_COUNT  = parseInt(document.body.dataset.popcount || '3', 10);
-const FEAT_COUNT = parseInt(document.body.dataset.featcount || '3', 10);
+  /* ========= State ========= */
+  let postsIndex = [];     // summary of posts for fast find
+  let pagesIndex = [];     // pages summary
+  let labelsAgg  = [];     // {name,count}
+  let activeEntry = null;  // current post/page
+  let ignorePop = false;
 
-  /* ===== State ===== */
-  let postsIndex = [];     // summary index (id, url, title, labels, date, excerpt, image)
-  let pagesIndex = [];     // pages (id, url, title)
-  let activePost = null;
-  let autoStickBottom = true;
-  let lastSent = '';
-  let feedScrollTop = 0;
-
-  /* ===== Utilities ===== */
-  const isMobile = ()=> matchMedia('(max-width:1024px)').matches;
-  const setHidden = (el, yes)=>{ if(!el) return; if(yes){ el.setAttribute('hidden','hidden'); el.setAttribute('aria-hidden','true'); } else { el.removeAttribute('hidden'); el.setAttribute('aria-hidden','false'); } };
-  const openOverlay = ()=> overlay && overlay.removeAttribute('hidden');
-  const closeOverlay= ()=> overlay && overlay.setAttribute('hidden','hidden');
-
-/* Nilai awal agar grid valid bahkan sebelum toggle */
-document.documentElement.style.setProperty('--sb-left', '0px');
-document.documentElement.style.setProperty('--sb-right','0px');
-
-/* Pastikan layout langsung terpasang */
-applyPushLayout();
-window.addEventListener('load', applyPushLayout);
-
-            
-  function trapFocus(container,on){
-    const sel='a[href],button:not([disabled]),input:not([disabled]),[tabindex]:not([tabindex="-1"])';
-    if(!on){ if(container.__trap){ document.removeEventListener('keydown',container.__trap); container.__trap=null; } return; }
-    container.__trap=(e)=>{
-      if(e.key!=='Tab') return;
-      const list=Array.from(container.querySelectorAll(sel)).filter(n=>n.offsetParent!==null);
-      if(!list.length) return;
-      const first=list[0], last=list[list.length-1];
-      if(e.shiftKey && document.activeElement===first){ e.preventDefault(); last.focus(); }
-      else if(!e.shiftKey && document.activeElement===last){ e.preventDefault(); first.focus(); }
-    };
-    document.addEventListener('keydown',container.__trap);
-    (container.querySelector(sel)||container).focus();
-  }
-
-  function measureChatbar(){
-    const h = chatbar?chatbar.offsetHeight:64;
-    document.documentElement.style.setProperty('--chatbar-h', h+'px');
-  }
-  const nearBottom = ()=> (room.scrollHeight - room.scrollTop - room.clientHeight) < 140;
-  const updateSmart= ()=> smartBtn && smartBtn.toggleAttribute('hidden', nearBottom());
-  function smartScroll(){ room.scrollTop = room.scrollHeight; updateSmart(); }
-
-  const stripHTML = html => (html||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
-  const trimWords = (t,n)=>{ const w=stripHTML(t).split(' ').filter(Boolean); return w.length<=n? w.join(' '): w.slice(0,n).join(' ')+'…'; };
+  /* ========= Utils ========= */
+  const setHidden =(el,yes)=> yes? (el.setAttribute('hidden',''), el.setAttribute('aria-hidden','true'))
+                                : (el.removeAttribute('hidden'), el.setAttribute('aria-hidden','false'));
+  const stripHTML = s => (s||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+  const trimWords = (t,n)=>{ const w=stripHTML(t).split(/\s+/).filter(Boolean); return w.length<=n? w.join(' '): w.slice(0,n).join(' ')+'…'; };
   const minutesRead = html => Math.max(1, Math.round(stripHTML(html).split(/\s+/).filter(Boolean).length/200));
-  const extractPostId = entryId => ( /post-(\d+)/.exec(entryId||'') || [] )[1] || '';
-  const fmtDate = iso => iso ? new Date(iso).toLocaleDateString() : '';
+  const fmtDate = iso => new Date(iso).toLocaleDateString('id-ID');
+  const nearBottom = () => {
+    const y = room.scrollTop + room.clientHeight;
+    return (room.scrollHeight - y) < 140;
+  };
 
-  /* ===== Push layout (desktop) ===== */
-  function applyPushLayout(){
-    if(isMobile()){
-      document.documentElement.style.setProperty('--sb-left','0px');
-      document.documentElement.style.setProperty('--sb-right','0px');
-      return;
-    }
-    const leftOpen  = !sidebarLeft.hasAttribute('hidden');
-    const rightOpen = !sidebarRight.hasAttribute('hidden');
-    document.documentElement.style.setProperty('--sb-left',  leftOpen  ? 'var(--w-left)'  : '0px');
-    document.documentElement.style.setProperty('--sb-right', rightOpen ? 'var(--w-right)' : '0px');
-  }
+  // init CSS vars to avoid collapsed grid
+  document.documentElement.style.setProperty('--sb-left','0px');
+  document.documentElement.style.setProperty('--sb-right','0px');
 
-  /* ===== JSONP loader ===== */
+  /* ========= JSONP loader ========= */
   function loadJSONP(url, ok, err){
-    const s=document.createElement('script');
-    const cb='cb'+Math.random().toString(36).slice(2);
-    window[cb]=data=>{ try{ ok&&ok(data); } finally{ delete window[cb]; s.remove(); } };
-    s.onerror=()=>{ try{ err&&err(); } finally{ delete window[cb]; s.remove(); } };
+    const cb = 'cb' + Math.random().toString(36).slice(2);
+    const s = document.createElement('script');
+    window[cb] = (data) => { try{ ok && ok(data); } finally { delete window[cb]; s.remove(); } };
+    s.onerror = () => { try{ err && err(); } finally { delete window[cb]; s.remove(); } };
     s.src = url + (url.includes('?')?'&':'?') + 'alt=json-in-script&callback=' + cb;
     document.body.appendChild(s);
   }
 
-  /* ===== Blogger Feeds ===== */
-  function fetchPostsSummary({label='', q='', max=300}={}, cb){
-    max = Math.min(500, Math.max(1, +max||300));
-    let u = BLOG_BASE + (label ? `/feeds/posts/summary/-/${encodeURIComponent(label)}?max-results=${max}`
-                               : `/feeds/posts/summary?max-results=${max}`);
-    if(q) u += '&q=' + encodeURIComponent(q);
-    loadJSONP(u, data=>{
-      const items=(data.feed && data.feed.entry)||[];
-      const mapped=items.map(e=>{
-        const link=(e.link||[]).find(l=>l.rel==='alternate');
-        return {
-          id: extractPostId(e.id && e.id.$t),
-          title: e.title ? e.title.$t : '',
-          url: link ? link.href : '',
-          date: e.published ? e.published.$t : '',
-          labels: (e.category||[]).map(c=>c.term),
-          excerpt: e.summary ? e.summary.$t : '',
-          image: (e.media$thumbnail && e.media$thumbnail.url) || ''
-        };
-      });
-      cb && cb(mapped);
-    }, ()=>cb && cb([]));
-  }
-
-  function fetchPostFull(postId, cb){
-    loadJSONP(BLOG_BASE + '/feeds/posts/default/' + postId, data=>{
-      const e = data.entry || {};
-      const link=(e.link||[]).find(l=>l.rel==='alternate');
-      cb && cb({
-        id: postId,
-        title: e.title?e.title.$t:'',
-        url: link?link.href:'',
-        date: e.published?e.published.$t:'',
+  /* ========= Blogger Feeds ========= */
+  const extractId = (eId) => ( /post-(\d+)/.exec(eId || '') || [] )[1] || '';
+  function mapSummaryEntries(feed){
+    const arr = (feed.feed && feed.feed.entry) || [];
+    return arr.map(e=>{
+      const link = (e.link||[]).find(l=>l.rel==='alternate');
+      return {
+        id: extractId(e.id && e.id.$t),
+        title: (e.title && e.title.$t) || '',
+        url: link ? link.href : '',
+        published: (e.published && e.published.$t) || '',
+        author: (e.author && e.author[0] && e.author[0].name && e.author[0].name.$t) || 'Admin',
         labels: (e.category||[]).map(c=>c.term),
-        content: e.content?e.content.$t:'',
+        excerpt: (e.summary && e.summary.$t) || '',
         image: (e.media$thumbnail && e.media$thumbnail.url) || ''
-      });
-    }, ()=>cb && cb(null));
-  }
-
-  function fetchPages(cb){
-    loadJSONP(BLOG_BASE + '/feeds/pages/default', data=>{
-      const items=(data.feed && data.feed.entry)||[];
-      const mapped=items.map(e=>{
-        const link=(e.link||[]).find(l=>l.rel==='alternate');
-        return { id:(e.id&&e.id.$t)||'', title:(e.title&&e.title.$t)||'', url: link?link.href:'' };
-      });
-      cb && cb(mapped);
-    }, ()=>cb && cb([]));
-  }
-  function fetchPageFull(pageId, cb){
-    loadJSONP(BLOG_BASE + '/feeds/pages/default/' + pageId, data=>{
-      const e=data.entry||{};
-      const link=(e.link||[]).find(l=>l.rel==='alternate');
-      cb && cb({
-        id:pageId, title:(e.title&&e.title.$t)||'',
-        url: link?link.href:'', date:(e.published&&e.published.$t)||'',
-        content:(e.content&&e.content.$t)||''
-      });
-    }, ()=>cb && cb(null));
-  }
-
-  function fetchComments(postId, cb){
-    loadJSONP(BLOG_BASE + '/feeds/' + postId + '/comments/default', data=>{
-      const items=(data.feed && data.feed.entry)||[];
-      const mapped = items.map(e=>{
-        const who=(e.author&&e.author[0]&&e.author[0].name && e.author[0].name.$t)||'Anonim';
-        const t=e.published?e.published.$t:''; 
-        const txt=(e.content&&e.content.$t) || (e.summary&&e.summary.$t) || '';
-        return { id:e.id.$t, name:who, time:t, text:txt };
-      });
-      cb && cb(mapped);
-    }, ()=>cb && cb([]));
-  }
-
-  /* ===== Sidebars ===== */
-  function toggleLeft(force){
-    const show = typeof force==='boolean' ? force : sidebarLeft.hasAttribute('hidden');
-    setHidden(sidebarLeft, !show);
-    sidebarLeft.classList.toggle('is-open', show);
-    if(isMobile()) (show?openOverlay():closeOverlay());
-    trapFocus(sidebarLeft, show);
-    applyPushLayout();
-  }
-  function toggleRight(force){
-    const show = typeof force==='boolean' ? force : sidebarRight.hasAttribute('hidden');
-    setHidden(sidebarRight, !show);
-    sidebarRight.classList.toggle('is-open', show);
-    if(isMobile()) (show?openOverlay():closeOverlay());
-    trapFocus(sidebarRight, show);
-    applyPushLayout();
-  }
-  applyPushLayout(); updateSmartGlobal();
-
-  /* ===== Renderers ===== */
-  function postcardNode(p){
-    const mins=minutesRead(p.excerpt||'');
-    const img=p.image || ('https://picsum.photos/seed/'+(p.id||'x')+'/320/240');
-    const card=document.createElement('article');
-    card.className='postcard';
-    card.setAttribute('data-id',p.id);
-
-    card.innerHTML =
-      "<div class='thumb'><img src='"+img+"' alt='Gambar "+(p.title||"")+"' width='320' height='240' loading='lazy' decoding='async'/></div>"+
-      "<div class='body'>"+
-        "<h3 class='title'>"+(p.title||'Tanpa Judul')+"</h3>"+
-        "<p class='excerpt'>"+trimWords(p.excerpt||'',20)+"</p>"+
-        "<div class='meta'>"+
-          "<span class='m'><svg width='18' height='18'><use href='#i-user' xlink:href='#i-user'/></svg> Admin</span>"+
-          "<span class='m'><svg width='18' height='18'><use href='#i-calendar' xlink:href='#i-calendar'/></svg> "+fmtDate(p.date)+"</span>"+
-          "<span class='m'><svg width='18' height='18'><use href='#i-clock' xlink:href='#i-clock'/></svg> "+mins+" menit</span>"+
-          "<div class='actions' role='group' aria-label='Aksi'>"+
-            "<button class='iconbtn act-copy'    title='Salin tautan'><svg width='18' height='18'><use href='#i-copy' xlink:href='#i-copy'/></svg><span>Salin</span></button>"+
-            "<button class='iconbtn act-comment' title='Komentar'><svg width='18' height='18'><use href='#i-comment' xlink:href='#i-comment'/></svg><span>Komentar</span></button>"+
-            "<button class='iconbtn act-props'   title='Properti'><svg width='18' height='18'><use href='#i-info' xlink:href='#i-info'/></svg><span>Properti</span></button>"+
-            "<button class='iconbtn act-read'    title='Baca'><svg width='18' height='18'><use href='#i-link' xlink:href='#i-link'/></svg><span>Baca</span></button>"+
-          "</div>"+
-        "</div>"+
-      "</div>";
-
-    $('.act-copy',card).addEventListener('click',()=>{ if(navigator.clipboard){ navigator.clipboard.writeText(p.url||''); } });
-    $('.act-comment',card).addEventListener('click',()=> openRight('comments',p));
-    $('.act-props',card).addEventListener('click',()=> openRight('meta',p));
-    $('.act-read',card).addEventListener('click',()=> openPost(p));
-
-    // klik judul = baca
-    $('.title',card).addEventListener('click',()=> openPost(p));
-    return card;
-  }
-
-  function renderFeed(list, title){
-    feed.innerHTML='';
-    if(title){
-      const h=document.createElement('h2'); h.className='eyebrow'; h.textContent=title;
-      feed.appendChild(h);
-    }
-    list.forEach(p=> feed.appendChild(postcardNode(p)));
-  }
-
-  function renderReaderById(postId){ fetchPostFull(postId, full=>{ if(full) renderReader(full); }); }
-
-  function renderReader(p){
-    activePost=p;
-    $$('.readercard', room).forEach(n=>n.remove());
-
-    const mins=minutesRead(p.content||p.excerpt||'');
-    const labels=(p.labels||[]).join(', ');
-
-    const art=document.createElement('article');
-    art.className='readercard';
-    art.innerHTML =
-      "<header class='reader-head'><h1 class='title'>"+p.title+"</h1>"+
-      "<div class='reader-meta'>"+
-        "<span><svg width='18' height='18'><use href='#i-user' xlink:href='#i-user'/></svg> Admin</span>"+
-        "<span><svg width='18' height='18'><use href='#i-calendar' xlink:href='#i-calendar'/></svg> "+fmtDate(p.date)+"</span>"+
-        "<span><svg width='18' height='18'><use href='#i-clock' xlink:href='#i-clock'/></svg> "+mins+" menit baca</span>"+
-        (labels? "<span><svg width='18' height='18'><use href='#i-tag' xlink:href='#i-tag'/></svg> "+labels+"</span>" : "")+
-      "</div></header>"+
-      "<div class='reader-body' id='readerArticle'>"+
-        (p.image ? "<img src='"+p.image+"' alt='Gambar "+p.title+"' width='768' height='480' loading='lazy' decoding='async'/>" : "")+
-        (p.content||p.excerpt||'')+
-      "</div>"+
-      "<div class='reader-actions' role='group' aria-label='Aksi artikel'>"+
-        "<button class='iconbtn act-copy'><svg width='18' height='18'><use href='#i-copy' xlink:href='#i-copy'/></svg><span>Salin tautan</span></button>"+
-        "<button class='iconbtn act-comment'><svg width='18' height='18'><use href='#i-comment' xlink:href='#i-comment'/></svg><span>Komentar</span></button>"+
-        "<button class='iconbtn act-props'><svg width='18' height='18'><use href='#i-info' xlink:href='#i-info'/></svg><span>Properti</span></button>"+
-      "</div>";
-
-    room.appendChild(art);
-    if(autoStickBottom) smartScroll(); else updateSmart();
-    buildToc();
-
-    $('.act-copy',art).addEventListener('click',()=>{ if(navigator.clipboard){ navigator.clipboard.writeText(p.url||location.href); } });
-    $('.act-comment',art).addEventListener('click',()=> openRight('comments',p));
-    $('.act-props',art).addEventListener('click',()=> openRight('meta',p));
-  }
-
-  function buildToc(){
-    const host=$('#readerArticle');
-    if(!host){ rsToc.innerHTML='<p class="small">Tidak ada konten.</p>'; return; }
-    const hs=[...host.querySelectorAll('h2,h3')];
-    rsToc.innerHTML='<div class="toc-list"></div>';
-    const list=$('.toc-list',rsToc);
-    hs.forEach((h,i)=>{
-      const id=h.id||('sec-'+(i+1)); h.id=id;
-      const a=document.createElement('a'); a.href='#'+id; a.textContent=h.textContent;
-      if(h.tagName==='H3') a.style.paddingLeft='16px';
-      list.appendChild(a);
-    });
-  }
-
-  /* ===== Right panel ===== */
-  function setRsTab(name){
-    rsTabs.forEach(t=> t.classList.toggle('is-active', t.getAttribute('data-tab')===name));
-    ['meta','toc','comments'].forEach(id=> $('#rs-'+id).classList.toggle('is-active', id===name));
-  }
-  function openRight(tab, p){
-    if(p){
-      activePost=p;
-      rsMeta.innerHTML =
-        "<div class='meta-list'>"+
-          "<div class='meta-row'><svg width='18' height='18'><use href='#i-link' xlink:href='#i-link'/></svg><a href='"+(p.url||"")+"' target='_blank' rel='noopener'>"+(p.url||"")+"</a></div>"+
-          "<div class='meta-row'><svg width='18' height='18'><use href='#i-user' xlink:href='#i-user'/></svg><span>Admin</span></div>"+
-          "<div class='meta-row'><svg width='18' height='18'><use href='#i-calendar' xlink:href='#i-calendar'/></svg><span>"+(p.date?new Date(p.date).toLocaleString():'')+"</span></div>"+
-          "<div class='meta-row'><svg width='18' height='18'><use href='#i-tag' xlink:href='#i-tag'/></svg><span>"+(p.labels||[]).join(', ')+"</span></div>"+
-          "<div class='meta-row'><svg width='18' height='18'><use href='#i-clock' xlink:href='#i-clock'/></svg><span>"+minutesRead((p.content||p.excerpt||''))+" menit baca</span></div>"+
-          "<div class='meta-row'><svg width='18' height='18'><use href='#i-info' xlink:href='#i-info'/></svg><span>ID: "+(p.id||'')+"</span></div>"+
-        "</div>";
-
-      rsComments.innerHTML =
-        "<div style='display:flex;gap:8px;align-items:center;margin-bottom:8px'>"+
-          "<button id='btnOAuth' class='iconbtn'><svg width='18' height='18'><use href='#i-user' xlink:href='#i-user'/></svg><span>Masuk Google (OAuth)</span></button>"+
-          "<a class='iconbtn' target='_blank' rel='noopener' href='"+(p.url||"#")+"#comments'><svg width='18' height='18'><use href='#i-link' xlink:href='#i-link'/></svg><span>Buka Halaman</span></a>"+
-        "</div><div id='cList'></div>";
-      const btnOauth=$('#btnOAuth'); if(btnOauth){ btnOauth.addEventListener('click', ()=> alert('OAuth placeholder: gunakan Google Identity Services untuk menulis komentar.')); }
-
-      fetchComments(p.id, list=>{
-        const holder=$('#cList'); if(!holder) return;
-        holder.innerHTML = list.length ? list.map(c=>(
-          "<div class='comment-card'><div class='who'>"+c.name+" • <span class='small'>"+(new Date(c.time).toLocaleString())+"</span></div><div class='text'>"+c.text+"</div></div>"
-        )).join('') : "<p class='small'>Belum ada komentar.</p>";
-      });
-    }
-    setRsTab(tab||'meta');
-    toggleRight(true);
-  }
-
-  /* ===== SidebarLeft: label 2-level (accordion) ===== */
-  function buildLabelsDropdown(allPosts){
-    const counts = {};
-    allPosts.forEach(p=> (p.labels||[]).forEach(l=> counts[l]=(counts[l]||0)+1 ));
-    const labels = Object.keys(counts).sort((a,b)=> a.localeCompare(b,'id'));
-
-    if(!labels.length){ labelList.innerHTML="<p class='small'>Belum ada label.</p>"; return; }
-
-    labelList.innerHTML = labels.map((l,idx)=>(
-      "<details class='label-item' data-label='"+l+"' id='lab-"+idx+"' open>"+
-        "<summary><svg width='18' height='18'><use href='#i-tag' xlink:href='#i-tag'/></svg>"+
-        "<span>"+l+"</span><span class='count small'>"+counts[l]+"</span></summary>"+
-        "<div class='acc' aria-live='polite'></div>"+
-      "</details>"
-    )).join('');
-
-    // Expand/collapse, isi drop di-load saat pertama kali open
-    $$('.label-item', labelList).forEach(d=>{
-      const loadList=()=>{
-        const lab = d.getAttribute('data-label');
-        const holder = $('.acc', d);
-        if(holder && !holder.__loaded){
-          holder.__loaded=true;
-          holder.innerHTML = "<p class='small'>Memuat…</p>";
-          fetchPostsSummary({label:lab, max:200}, list=>{
-            list.sort((a,b)=> (a.title||'').localeCompare(b.title||'','id'));
-            holder.innerHTML = list.map(p=>(
-              "<button class='page-item post-link' data-id='"+p.id+"'><svg width='16' height='16'><use href='#i-page' xlink:href='#i-page'/></svg> "+(p.title||'Tanpa judul')+"</button>"
-            )).join('');
-            $$('.post-link', holder).forEach(btn=>{
-              btn.addEventListener('click', ()=>{
-                openPost(postsIndex.find(x=>x.id===btn.getAttribute('data-id')) || {id:btn.getAttribute('data-id'), url:''});
-                if(isMobile()) toggleLeft(false);
-              });
-            });
-          });
-        }
       };
-      // muat langsung satu label pertama (UX cepat)
-      loadList();
-      d.addEventListener('toggle', ()=>{ if(d.open) loadList(); });
     });
   }
+  function fetchPostsSummary({label='', q='', max=150}={}, cb){
+    let u = BLOG + (label ? `/feeds/posts/summary/-/${encodeURIComponent(label)}?max-results=${max}`
+                           : `/feeds/posts/summary?max-results=${max}`);
+    if(q) u += '&q=' + encodeURIComponent(q);
+    loadJSONP(u, data => cb(mapSummaryEntries(data)), ()=>cb([]));
+  }
+  function fetchPostFullByUrl(url, cb){
+    // Get by path -> summary to find id -> full by id
+    const hit = postsIndex.find(p=>p.url===url);
+    if(hit) return fetchPostFullById(hit.id, cb);
+    // fallback: query
+    fetchPostsSummary({q:url,max:1}, arr => {
+      if(arr[0]) fetchPostFullById(arr[0].id, cb); else cb(null);
+    });
+  }
+  function fetchPostFullById(id, cb){
+    const u = `${BLOG}/feeds/posts/default/${id}`;
+    loadJSONP(u, data=>{
+      const e = (data.entry)||null; if(!e) return cb(null);
+      const link = (e.link||[]).find(l=>l.rel==='alternate');
+      const content = (e.content && e.content.$t) || (e.summary && e.summary.$t) || '';
+      cb({
+        id, url: link?link.href:'', title: e.title.$t || '',
+        published: e.published.$t || '', author: (e.author&&e.author[0].name.$t)||'Admin',
+        labels: (e.category||[]).map(c=>c.term), content
+      });
+    }, ()=>cb(null));
+  }
+  function fetchPagesSummary(cb){
+    const u = `${BLOG}/feeds/pages/summary?max-results=200`;
+    loadJSONP(u, data => cb(mapSummaryEntries(data)), ()=>cb([]));
+  }
+  function fetchPageFullByUrl(url, cb){
+    const hit = pagesIndex.find(p=>p.url===url);
+    if(!hit){ cb(null); return; }
+    const u = `${BLOG}/feeds/pages/default/${hit.id}`;
+    loadJSONP(u, data=>{
+      const e = (data.entry)||null; if(!e) return cb(null);
+      const link = (e.link||[]).find(l=>l.rel==='alternate');
+      const content = (e.content && e.content.$t) || (e.summary && e.summary.$t) || '';
+      cb({
+        id: hit.id, url: link?link.href:hit.url, title: e.title.$t || hit.title,
+        published: e.published?.$t || '', author: hit.author || 'Admin',
+        labels: [], content
+      });
+    }, ()=>cb(null));
+  }
 
-  /* ===== Pages (SPA, no reload) ===== */
-  function buildPagesList(pages){
-    if(!pages || !pages.length){ pageList.innerHTML="<p class='small'>Belum ada halaman.</p>"; return; }
-    pageList.innerHTML = pages.map(pg=>(
-      "<button class='page-item page-open' data-id='"+pg.id+"'>"+
-        "<svg width='16' height='16'><use href='#i-page' xlink:href='#i-page'/></svg> "+pg.title+
-      "</button>"
-    )).join('');
-    $$('.page-open', pageList).forEach(btn=>{
-      btn.addEventListener('click', ()=>{
-        const id=btn.getAttribute('data-id'); const pg=pagesIndex.find(x=>x.id===id);
-        openPage(pg||{id, url:''});
-        if(isMobile()) toggleLeft(false);
+  /* ========= Render: Bubbles ========= */
+  function addBubble(html, tone='info', role='system'){
+    const b = document.createElement('div');
+    b.className = `bubble bubble--${tone}`; b.dataset.role = role;
+    b.innerHTML = `<p>${html}</p>`;
+    room.appendChild(b); afterAppend();
+    return b;
+  }
+
+  /* ========= Render: Postcard (for groups) ========= */
+  function postcardNode(p){
+    const el = document.createElement('article');
+    el.className = 'postcard'; el.dataset.id = p.id; el.dataset.url = p.url;
+    el.innerHTML = `
+      <div class="thumb">${p.image?`<img alt="" src="${p.image}">`:''}</div>
+      <div class="body">
+        <h3 class="title"><a class="post-link" href="${p.url}" data-nav="post">${p.title||'(Tanpa judul)'}</a></h3>
+        <p class="excerpt">${trimWords(p.excerpt||'', 20)}</p>
+        <div class="meta">
+          <span class="m"><svg width="18" height="18"><use xlink:href="#i-user"/></svg>${p.author||'Admin'}</span>
+          <span class="m"><svg width="18" height="18"><use xlink:href="#i-calendar"/></svg>${p.published?fmtDate(p.published):''}</span>
+          <span class="m"><svg width="18" height="18"><use xlink:href="#i-clock"/></svg>${Math.max(1, minutesRead(p.excerpt))} menit</span>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="iconbtn act-copy"><svg width="18" height="18"><use xlink:href="#i-copy"/></svg><span>Salin</span></button>
+        <button class="iconbtn act-comment"><svg width="18" height="18"><use xlink:href="#i-comment"/></svg><span>Komentar</span></button>
+        <button class="iconbtn act-props"><svg width="18" height="18"><use xlink:href="#i-info"/></svg><span>Properti</span></button>
+        <button class="iconbtn act-read"><svg width="18" height="18"><use xlink:href="#i-link"/></svg><span>Baca</span></button>
+      </div>`;
+    return el;
+  }
+  function renderGroup(title, list){
+    const wrapper = document.createElement('div'); wrapper.className='group';
+    wrapper.innerHTML = `<h2 class="eyebrow">${title}</h2>`;
+    list.forEach(p => wrapper.appendChild(postcardNode(p)));
+    room.appendChild(wrapper); afterAppend();
+  }
+
+  /* ========= Render: Readercard ========= */
+  function readercardNode(entry){
+    const el = document.createElement('article');
+    el.className='readercard'; el.dataset.id = entry.id; el.dataset.url = entry.url;
+    const time = minutesRead(entry.content||'');
+    el.innerHTML = `
+      <header class="reader-head">
+        <h1 class="reader-title">${entry.title||'(Tanpa judul)'}</h1>
+        <div class="reader-meta">
+          <span class="m"><svg width="18" height="18"><use xlink:href="#i-user"/></svg>${entry.author||'Admin'}</span>
+          <span class="m"><svg width="18" height="18"><use xlink:href="#i-calendar"/></svg>${entry.published?fmtDate(entry.published):''}</span>
+          <span class="m"><svg width="18" height="18"><use xlink:href="#i-clock"/></svg>${time} menit baca</span>
+        </div>
+      </header>
+      <section class="reader-body">${entry.content||''}</section>
+      <footer class="reader-actions">
+        <button class="iconbtn act-copy"><svg width="18" height="18"><use xlink:href="#i-copy"/></svg><span>Salin tautan</span></button>
+        <button class="iconbtn act-comment"><svg width="18" height="18"><use xlink:href="#i-comment"/></svg><span>Komentar</span></button>
+        <button class="iconbtn act-props"><svg width="18" height="18"><use xlink:href="#i-info"/></svg><span>Properti</span></button>
+      </footer>
+    `;
+    return el;
+  }
+
+  /* ========= Sidebar build ========= */
+  function buildLabels(){
+    // Aggregate from postsIndex
+    const map = new Map();
+    postsIndex.forEach(p => (p.labels||[]).forEach(l => map.set(l, (map.get(l)||0)+1)));
+    labelsAgg = Array.from(map.entries()).sort((a,b)=> a[0].localeCompare(b[0]));
+
+    labelList.innerHTML = '';
+    labelsAgg.forEach(([name,count])=>{
+      const det = document.createElement('details'); det.className='label-item';
+      det.innerHTML = `
+        <summary>
+          <svg width="18" height="18"><use xlink:href="#i-tag"/></svg>
+          <span>${name}</span>
+          <svg width="18" height="18" style="margin-left:auto"><use xlink:href="#i-chevron"/></svg>
+          <small class="count">${count}</small>
+        </summary>
+        <div class="acc" data-label="${name}">
+          <div class="page-item" data-action="label-load">Memuat…</div>
+        </div>`;
+      labelList.appendChild(det);
+
+      det.addEventListener('toggle', () => {
+        if(!det.open) return;
+        const acc = det.querySelector('.acc'); if(acc.dataset.loaded) return;
+        fetchPostsSummary({label:name,max:200}, list=>{
+          const sorted = list.slice().sort((x,y)=> x.title.localeCompare(y.title));
+          acc.innerHTML = '';
+          sorted.forEach(p=>{
+            const a = document.createElement('button');
+            a.className='page-item'; a.dataset.nav='post'; a.dataset.url=p.url;
+            a.innerHTML = `<svg width="16" height="16"><use xlink:href="#i-page"/></svg><span>${p.title||'(Tanpa judul)'}</span>`;
+            acc.appendChild(a);
+          });
+          acc.dataset.loaded='1';
+        });
       });
     });
   }
-
-  /* ===== Chatbar (minimal) ===== */
-  function addBubble(html,tone,role){
-    const n=document.createElement('article');
-    n.className='bubble'+(tone?(' bubble--'+tone):''); n.setAttribute('data-role',role||'system');
-    n.innerHTML='<p>'+html+'</p>'; room.appendChild(n);
-    if(autoStickBottom) smartScroll(); else updateSmart();
-  }
-  function doSend(){
-    const t=chatInput.value.trim(); if(!t) return;
-    lastSent=t; addBubble(t,'success','user'); chatInput.value=''; chatInput.focus();
-  }
-  function doClear(){ chatInput.value=''; chatInput.focus(); }
-  function doAttach(){ filePicker.click(); }
-
-  /* ===== Router helpers (SPA feel, permalink in address bar) ===== */
-  function pushURL(url){ try{ history.pushState({},'',url); }catch(_e){} }
-
-  function openPost(p){
-    // Pastikan punya id; kalau dipanggil dari list label level-2, p bisa minim
-    if(!p.id){
-      const hit=postsIndex.find(x=>x.url===p.url);
-      if(hit) p=hit;
-    }
-    feedScrollTop = feed.parentElement ? feed.parentElement.scrollTop : 0;
-    if(p.url) pushURL(p.url); else pushURL('#/post/'+p.id);
-    renderReaderById(p.id);
-  }
-  function openLabel(label){
-    renderFeed(postsIndex.filter(p=> (p.labels||[]).includes(label)), 'Label: '+label);
-    pushURL(BLOG_BASE.replace(/^https?:\/\/[^/]+/,'') + '/search/label/'+encodeURIComponent(label));
-  }
-  function openPage(pg){
-    if(pg.url) pushURL(pg.url);
-    fetchPageFull(pg.id, full=>{
-      if(!full) return;
-      activePost = { id: full.id, url: full.url, title: full.title, date: full.date, labels: ['Halaman'], content: full.content };
-      renderReader(activePost);
-      setRsTab('toc'); // biasanya halaman punya ToC pendek
+  function buildPages(){
+    pageList.innerHTML='';
+    pagesIndex.forEach(p=>{
+      const btn = document.createElement('button');
+      btn.className='page-item'; btn.dataset.nav='page'; btn.dataset.url=p.url;
+      btn.innerHTML = `<svg width="16" height="16"><use xlink:href="#i-page"/></svg><span>${p.title||'(Tanpa judul)'}</span>`;
+      pageList.appendChild(btn);
     });
   }
 
-  // Parse URL saat popstate atau boot → agar SPA feel tetap sinkron
-  function handleLocation(){
-    const path = location.pathname, hash=location.hash;
-    // /search/label/<lab>
-    const mLabel = /^\/search\/label\/([^/?#]+)/.exec(path);
-    if(mLabel){ const lab=decodeURIComponent(mLabel[1]); openLabel(lab); return; }
-    // /p/<page>.html
-    if(/^\/p\//.test(path)){
-      const pg = pagesIndex.find(x=> x.url.replace(/^https?:\/\/[^/]+/,'') === path );
-      if(pg) openPage(pg); else fetchPages(p=>{ pagesIndex=p; const hit=p.find(x=>x.url.replace(/^https?:\/\/[^/]+/,'')===path); if(hit) openPage(hit); });
-      return;
-    }
-    // /YYYY/MM/slug.html → post
-    if(/^\/\d{4}\/\d{2}\//.test(path)){
-      const hit = postsIndex.find(x=> x.url.replace(/^https?:\/\/[^/]+/,'') === path );
-      if(hit) openPost(hit);
-      else {
-        // fallback: tampilkan feed (supaya tetap ada konten)
-        renderFeed(postsIndex.slice(0,20));
+  /* ========= Right Panel ========= */
+  function openRight(tab='meta', entry=null){
+    right.classList.add('is-open'); setHidden(right,false); setHidden(overlay,false);
+    document.documentElement.style.setProperty('--sb-right', getComputedStyle(right).width);
+    if(entry) activeEntry = entry;
+
+    rsTabs.forEach(b=> b.classList.toggle('is-active', b.dataset.tab===tab));
+    $$('.rs-pane', right).forEach(p=> p.classList.toggle('is-active', p.id==='rs-'+tab));
+
+    if(entry){
+      if(tab==='meta'){
+        rsMeta.innerHTML = `
+          <div class="meta-list">
+            <div class="meta-row"><svg width="18" height="18"><use xlink:href="#i-info"/></svg><div>${entry.title}</div></div>
+            <div class="meta-row"><svg width="18" height="18"><use xlink:href="#i-calendar"/></svg><div>${entry.published?fmtDate(entry.published):''}</div></div>
+            <div class="meta-row"><svg width="18" height="18"><use xlink:href="#i-user"/></svg><div>${entry.author||'Admin'}</div></div>
+            <div class="meta-row"><svg width="18" height="18"><use xlink:href="#i-tag"/></svg><div>${(entry.labels||[]).join(', ')||'-'}</div></div>
+            <div class="meta-row"><svg width="18" height="18"><use xlink:href="#i-link"/></svg><div><a href="${entry.url}" target="_blank" rel="noopener">${entry.url}</a></div></div>
+          </div>`;
+      } else if(tab==='toc'){
+        const tmp = document.createElement('div'); tmp.innerHTML = entry.content||'';
+        const heads = $$('h2, h3', tmp); rsToc.innerHTML='';
+        heads.forEach(h=>{
+          const li = document.createElement('div'); li.className='page-item';
+          li.textContent = stripHTML(h.textContent||h.innerHTML); rsToc.appendChild(li);
+        });
+        if(!heads.length) rsToc.textContent='(Tidak ada heading)';
+      } else if(tab==='comments'){
+        rsComments.innerHTML = `
+          <div class="comment-card"><div class="who">OAuth 2.0 Placeholder</div>
+          <div>Masuk untuk menulis komentar.</div></div>`;
       }
+    }
+  }
+  function closeRight(){ right.classList.remove('is-open'); setHidden(right,true); setHidden(overlay,true); document.documentElement.style.setProperty('--sb-right','0px'); }
+
+  /* ========= Dock & Left ========= */
+  function openLeft(){ left.classList.add('is-open'); setHidden(left,false); setHidden(overlay,false); document.documentElement.style.setProperty('--sb-left', getComputedStyle(left).width); }
+  function closeLeft(){ left.classList.remove('is-open'); setHidden(left,true); setHidden(overlay,true); document.documentElement.style.setProperty('--sb-left','0px'); }
+
+  overlay.addEventListener('click', ()=>{ closeLeft(); closeRight(); });
+
+  /* ========= Navigation (SPA feel) ========= */
+  function pushURL(url){ ignorePop = true; history.pushState({url}, '', url); setTimeout(()=>ignorePop=false,50); }
+  window.addEventListener('popstate', (ev)=>{
+    if(ignorePop) return;
+    const url = (ev.state && ev.state.url) || location.pathname;
+    routeTo(url);
+  });
+
+  async function routeTo(url){
+    if(url==='/' || url === BLOG.replace(/^https?:\/\/[^/]+/,'/')){ renderHome(); return; }
+    if(url.includes('/search/label/')){
+      const label = decodeURIComponent(url.split('/search/label/')[1]||'').replace(/\?.*$/,'');
+      renderLabelStream(label); return;
+    }
+    if(url.includes('/p/')){ openPage(url); return; }
+    // default: post
+    openPostByUrl(url);
+  }
+
+  /* ========= Actions in stream ========= */
+  function afterAppend(){
+    // keep stick-to-bottom experience
+    if(nearBottom()) room.scrollTop = room.scrollHeight;
+    smart.toggleAttribute('hidden', nearBottom());
+  }
+  function copyToClip(text){
+    if(navigator.clipboard) navigator.clipboard.writeText(text||'');
+    addBubble(text?`Tautan disalin:<br><code>${text}</code>`:'Tidak ada tautan.', 'success');
+  }
+
+  // Delegation for any button/link inside stream
+  room.addEventListener('click', (e)=>{
+    const a = e.target.closest('[data-nav]'); if(a){
+      e.preventDefault();
+      const url = a.dataset.url || a.getAttribute('href');
+      if(a.dataset.nav==='post') openPostByUrl(url);
+      else if(a.dataset.nav==='page') openPage(url);
       return;
     }
-    // hash fallback (#/post/id)
-    const mHash = /#\/post\/(\d+)/.exec(hash);
-    if(mHash){ renderReaderById(mHash[1]); return; }
-    // default → Home boot
-    renderHome();
-  }
-
-  /* ===== Home boot (popular & featured customizable) ===== */
-function renderHome(){
-  room.innerHTML = '';
-  addBubble('Selamat datang di Gaga 👋','info','system');
-
-  // Popular dari label 'Popular' bila ada, jika tidak → pos terbaru
-  fetchPostsSummary({ label:'Popular', max: POP_COUNT }, list=>{
-    const use = (list && list.length) ? list.slice(0, POP_COUNT) : postsIndex.slice(0, POP_COUNT);
-    renderFeed(use, 'Popular Post');
-    updateSmartGlobal();
+    const btn = e.target.closest('.iconbtn'); if(!btn) return;
+    const holder = e.target.closest('[data-url]');
+    const url = holder?.dataset.url || '';
+    const id  = holder?.dataset.id  || '';
+    if(btn.classList.contains('act-copy')) copyToClip(url);
+    else if(btn.classList.contains('act-comment')) openRight('comments', activeEntry || postsIndex.find(p=>p.id===id));
+    else if(btn.classList.contains('act-props'))   openRight('meta', activeEntry || postsIndex.find(p=>p.id===id));
+    else if(btn.classList.contains('act-read')){
+      if(url) openPostByUrl(url);
+    }
   });
 
-  // Featured dari label 'Featured'; fallback terbaru sesudah popular
-  fetchPostsSummary({ label:'Featured', max: FEAT_COUNT }, list=>{
-    const use = (list && list.length) ? list.slice(0, FEAT_COUNT) : postsIndex.slice(0, FEAT_COUNT);
-    // sisipkan heading kedua tanpa menghapus feed popular
-    const h = document.createElement('h2'); h.className='eyebrow'; h.textContent='Featured Post';
-    feed.appendChild(h);
-    use.forEach(p=> feed.appendChild(postcardNode(p)));
-    updateSmartGlobal();
-  });
-
-  addBubble('Gunakan Label di kiri atau Dockbar (Ctrl+,) untuk mengatur tampilan.','success','system');
-  pushURL('/'); // alamat root
-}
-
- 
-  /* ===== Event delegation untuk semua kartu di #feed ===== */
-feed.addEventListener('click', (e)=>{
-  const btn = e.target.closest('.iconbtn'); if(!btn) return;
-  const card = e.target.closest('.postcard'); if(!card) return;
-  const id = card.getAttribute('data-id');
-  const data = postsIndex.find(x=>x.id===id) || { id, url:'' };
-  if(btn.classList.contains('act-copy')){
-    if(navigator.clipboard) navigator.clipboard.writeText(data.url || location.href);
-  } else if(btn.classList.contains('act-comment')){
-    openRight('comments', data);
-  } else if(btn.classList.contains('act-props')){
-    openRight('meta', data);
-  } else if(btn.classList.contains('act-read')){
-    openPost(data);
+  /* ========= Render flows ========= */
+  function renderHome(){
+    room.innerHTML = '';
+    addBubble('Selamat datang di Gaga 👋','info');
+    // Popular
+    fetchPostsSummary({label:'Popular',max:POP_COUNT}, pop=>{
+      const use = (pop && pop.length)? pop.slice(0,POP_COUNT) : postsIndex.slice(0,POP_COUNT);
+      renderGroup('Popular Post', use);
+    });
+    // Featured
+    fetchPostsSummary({label:'Featured',max:FEAT_COUNT}, feat=>{
+      const use = (feat && feat.length)? feat.slice(0,FEAT_COUNT) : postsIndex.slice(0,FEAT_COUNT);
+      renderGroup('Featured Post', use);
+    });
+    addBubble('Gunakan Label di kiri atau Dockbar (Ctrl+,) untuk mengatur tampilan.','success');
+    pushURL('/');
   }
-});
 
-             /* ===== Events ===== */
-            
-  room.addEventListener('scroll', ()=>{ autoStickBottom = nearBottom(); updateSmart(); }, {passive:true});
-  smartBtn.addEventListener('click', smartScroll);
+  function renderLabelStream(label){
+    room.innerHTML='';
+    addBubble(`Label: <b>${label}</b>`, 'info');
+    fetchPostsSummary({label, max:120}, list=>{
+      if(!list.length){ addBubble('Belum ada posting pada label ini.','warn'); return; }
+      renderGroup('Postingan', list);
+      pushURL(`/search/label/${encodeURIComponent(label)}`);
+    });
+  }
+
+  function openPostByUrl(url){
+    addBubble('Membuka posting…','info');
+    fetchPostFullByUrl(url, (entry)=>{
+      if(!entry){ addBubble('Gagal membuka posting.','error'); return; }
+      activeEntry = entry;
+      const card = readercardNode(entry);
+      room.appendChild(card);
+      afterAppend();
+      pushURL(entry.url);
+
+      // similar post (by label)
+      const tag = (entry.labels||[])[0];
+      if(tag){
+        fetchPostsSummary({label:tag,max:6}, list=>{
+          const picks = list.filter(p=>p.url!==entry.url).slice(0,3);
+          if(picks.length) renderGroup('Similar Post', picks);
+        });
+      }
+    });
+  }
+
+  function openPage(url){
+    addBubble('Membuka halaman…','info');
+    fetchPageFullByUrl(url, (entry)=>{
+      if(!entry){ addBubble('Gagal membuka halaman.','error'); return; }
+      activeEntry = entry;
+      room.appendChild(readercardNode(entry));
+      afterAppend();
+      pushURL(entry.url);
+    });
+  }
+
+  /* ========= SmartScroll ========= */
+  smart.addEventListener('click', ()=>{ room.scrollTop = room.scrollHeight; smart.hidden = true; });
+  room.addEventListener('scroll', ()=> smart.toggleAttribute('hidden', nearBottom()), {passive:true});
+
+  /* ========= Chatbar (simple demo) ========= */
+  chatForm.addEventListener('submit', (e)=>{
+    e.preventDefault();
+    const v = chatInput.value.trim(); if(!v) return;
+    const u = document.createElement('div'); u.className='bubble'; u.dataset.role='user'; u.innerHTML=`<p>${v}</p>`;
+    room.appendChild(u); chatInput.value=''; afterAppend();
+    setTimeout(()=> addBubble('Terima kasih! Gunakan label atau tombol Baca pada kartu.','success'), 100);
+  });
 
   chatForm.addEventListener('click', (e)=>{
-    const btn=e.target.closest('[data-action]'); if(!btn) return;
-    const act=btn.getAttribute('data-action');
-    if(act==='toggle-left') toggleLeft();
-    else if(act==='emoji'){ chatInput.setRangeText('😊',chatInput.selectionStart,chatInput.selectionEnd,'end'); chatInput.focus(); }
-    else if(act==='attach') doAttach();
-    else if(act==='mic'){ addBubble('🎤 Mic placeholder.','warn','system'); }
-    else if(act==='clear') doClear();
-    else if(act==='send'){ e.preventDefault(); doSend(); }
-    else if(act==='toggle-dock'){ setHidden(dockbar,false); dockbar.classList.add('open'); trapFocus(dockSheet,true); }
-  });
-  chatForm.addEventListener('submit', (e)=>{ e.preventDefault(); doSend(); });
-  filePicker.addEventListener('change', ()=>{
-    const fs=[].slice.call(filePicker.files||[]); if(!fs.length) return;
-    addBubble('📎 '+fs.map(f=>f.name).join(', '),'info','system'); filePicker.value='';
+    const t = e.target.closest('[data-action]'); if(!t) return;
+    const act = t.dataset.action;
+    if(act==='toggle-left') openLeft();
+    if(act==='toggle-dock') openDock();
+    if(act==='clear'){ chatInput.value=''; chatInput.focus(); }
   });
 
-  dockbar.addEventListener('click', (e)=>{
-    const b=e.target.closest('[data-action]'); if(!b) return;
-    const act=b.getAttribute('data-action'), val=b.getAttribute('data-value'), delta=parseFloat(b.getAttribute('data-delta')||'0');
-    if(act==='close'){ dockbar.classList.remove('open'); setHidden(dockbar,true); trapFocus(dockSheet,false); return; }
-    if(act==='theme'){ document.body.dataset.theme=val; try{localStorage.setItem('theme',val);}catch(_e){} return; }
-    if(act==='tsize'){ const curr=+(getComputedStyle(document.documentElement).getPropertyValue('--ts'))||1; const next=Math.min(1.25,Math.max(0.85,+(curr+delta).toFixed(2))); document.documentElement.style.setProperty('--ts',next); measureChatbar(); return; }
-    if(act==='density'){ document.body.dataset.density=val; measureChatbar(); return; }
-    if(act==='bubble'){ document.body.dataset.bubble=val; return; }
-    if(act==='motion'){ document.body.dataset.motion=val; return; }
-    if(act==='ground'){ document.body.dataset.ground=val; return; }
-    if(act==='bg'){ document.body.dataset.bg=val; return; }
-    if(act==='focus'){ document.body.dataset.focus=val; return; }
-    if(act==='reset'){ document.documentElement.style.setProperty('--ts',1); document.body.dataset.density='comfortable'; document.body.dataset.bubble='fit'; document.body.dataset.motion='on'; document.body.dataset.ground='on'; document.body.dataset.bg='static'; document.body.dataset.focus='off'; measureChatbar(); return; }
+  /* ========= Dock ========= */
+  const dock = $('#dockbar'); const sheet = $('.dock__sheet', dock);
+  function openDock(){ dock.classList.add('open'); setHidden(dock,false); setHidden(overlay,false); sheet.focus(); }
+  function closeDock(){ dock.classList.remove('open'); setHidden(dock,true); setHidden(overlay,true); }
+  dock.addEventListener('click', e=>{
+    const a = e.target.closest('[data-action]'); if(!a) return;
+    const act = a.dataset.action, val = a.dataset.value, d = a.dataset.delta;
+    if(act==='close') closeDock();
+    if(act==='theme'){ document.body.setAttribute('data-theme', val); }
+    if(act==='density'){ document.body.setAttribute('data-density', val); }
+    if(act==='bubble'){ document.body.setAttribute('data-bubble', val); }
+    if(act==='bg'){ document.body.setAttribute('data-bg', val); }
+    if(act==='focus'){ document.body.setAttribute('data-focus', val); }
+    if(act==='tsize'){ const ts = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ts')||'1'); document.documentElement.style.setProperty('--ts', String(ts + parseFloat(d))); }
+    if(act==='reset'){ document.documentElement.style.setProperty('--ts','1'); document.body.setAttribute('data-density','comfortable'); }
   });
-  dockScrim && dockScrim.addEventListener('click', ()=>{ dockbar.classList.remove('open'); setHidden(dockbar,true); trapFocus(dockSheet,false); });
 
-  overlay.addEventListener('click', ()=>{ toggleLeft(false); toggleRight(false); });
-
+  /* ========= Keyboard shortcuts ========= */
   document.addEventListener('keydown', (e)=>{
-    const mod=e.ctrlKey||e.metaKey;
-    if(e.key==='Escape'){
-      if(!dockbar.hasAttribute('hidden')){ dockbar.classList.remove('open'); setHidden(dockbar,true); trapFocus(dockSheet,false); return; }
-      if(!sidebarLeft.hasAttribute('hidden')){ toggleLeft(false); return; }
-      if(!sidebarRight.hasAttribute('hidden')){ toggleRight(false); return; }
-      if(document.activeElement===chatInput && chatInput.value){ chatInput.value=''; return; }
-    }
-    if(e.key==='/' && !mod && document.activeElement!==chatInput){ e.preventDefault(); chatInput.focus(); chatInput.select(); return; }
-    if(mod && e.key===','){ e.preventDefault(); setHidden(dockbar,false); dockbar.classList.add('open'); trapFocus(dockSheet,true); return; }
-    if(mod && e.key.toLowerCase()==='l'){ e.preventDefault(); toggleLeft(); return; }
-    if(mod && e.key.toLowerCase()==='r'){ e.preventDefault(); toggleRight(); return; }
-    if(document.activeElement===chatInput && e.key==='Enter'){ e.preventDefault(); doSend(); return; }
-    if(document.activeElement===chatInput && e.key==='ArrowUp' && !chatInput.value){ chatInput.value=lastSent; chatInput.selectionStart=chatInput.selectionEnd=chatInput.value.length; }
+    if(e.key==='/' && document.activeElement!==chatInput){ e.preventDefault(); chatInput.focus(); }
+    if((e.ctrlKey||e.metaKey) && e.key===','){ e.preventDefault(); openDock(); }
+    if((e.ctrlKey||e.metaKey) && (e.key.toLowerCase()==='l')){ e.preventDefault(); openLeft(); }
+    if((e.ctrlKey||e.metaKey) && (e.key.toLowerCase()==='r')){ e.preventDefault(); openRight('meta', activeEntry); }
+    if(e.key==='Escape'){ closeLeft(); closeRight(); closeDock(); }
   });
 
-  /* ===== SmartScroll: amati window, bukan hanya #roomchat ===== */
-function nearBottomGlobal(){
-  const y = window.scrollY + window.innerHeight;
-  const doc = Math.max(
-    document.body.scrollHeight, document.documentElement.scrollHeight,
-    document.body.offsetHeight, document.documentElement.offsetHeight
-  );
-  return (doc - y) < 140;
-}
-function updateSmartGlobal(){ smartBtn && smartBtn.toggleAttribute('hidden', nearBottomGlobal()); }
-function smartScrollGlobal(){ window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); }
-            
-  /* ===== Boot ===== */
-  document.addEventListener('DOMContentLoaded', ()=>{
-    // ukur chatbar (termasuk bila tinggi berubah)
-    measureChatbar();
-    try{
-      const ro=new ResizeObserver(()=>measureChatbar());
-      if(chatbar) ro.observe(chatbar);
-    }catch(_e){}
+  /* ========= Boot ========= */
+  function boot(){
+    // height for chatbar padding
+    const h = chatbar ? chatbar.offsetHeight : 64;
+    document.documentElement.style.setProperty('--chatbar-h', h+'px');
 
-    // Pages
-    fetchPages(pgs=>{ pagesIndex=pgs; buildPagesList(pgs); });
+    // Index data
+    fetchPostsSummary({max:150}, list => { postsIndex = list; buildLabels(); });
+    fetchPagesSummary(list => { pagesIndex = list; buildPages(); });
 
-    // Posts summary → Index + Labels
-    fetchPostsSummary({max:300}, list=>{
-      postsIndex=list.slice();
-      buildLabelsDropdown(list);
-      // Sinkronkan dengan URL saat ini (SPA feel dengan permalink)
-      handleLocation();
-    });
+    // Home stream
+    renderHome();
 
-    // Smart scroll vis
-    room.addEventListener('focusin', ()=> setTimeout(updateSmart,0));
-    smartBtn.onclick = smartScrollGlobal;
-    window.addEventListener('scroll', updateSmartGlobal, { passive:true });
-    window.addEventListener('resize', updateSmartGlobal, { passive:true });;
-    window.addEventListener('orientationchange', applyPushLayout);
+    // Route current URL if not root
+    if(location.pathname !== '/' && !location.pathname.match(/\/$/)) routeTo(location.pathname);
+  }
 
-    applyPushLayout();
-    setTimeout(measureChatbar, 300);
+  /* Right tabs switch */
+  rsTabs.forEach(btn => btn.addEventListener('click', ()=>{
+    rsTabs.forEach(b=> b.classList.remove('is-active')); btn.classList.add('is-active');
+    $$('.rs-pane', right).forEach(p=> p.classList.toggle('is-active', p.id==='rs-'+btn.dataset.tab));
+  }));
+
+  // Sidebar triggers
+  $$('.rs-tab, [data-action="toggle-right"]').forEach(n=> n.addEventListener('click', ()=> openRight('meta', activeEntry)));
+  overlay.addEventListener('click', ()=>{ /* already handled */ });
+
+  // SidebarLeft / Right close buttons
+  $('[data-action="toggle-right"]').addEventListener?.('click', ()=> closeRight());
+
+  // Left nav (pages/labels) SPA
+  labelList.addEventListener('click', (e)=>{
+    const a = e.target.closest('[data-nav="post"]'); if(a){ e.preventDefault(); openPostByUrl(a.dataset.url); }
+  });
+  pageList.addEventListener('click', (e)=>{
+    const a = e.target.closest('[data-nav="page"]'); if(!a) return; e.preventDefault(); openPage(a.dataset.url);
   });
 
-  window.addEventListener('popstate', handleLocation);
-
+  // start
+  window.addEventListener('load', boot);
 })();
