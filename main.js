@@ -142,11 +142,23 @@
     show?openOverlay():closeOverlay(); trapFocus(sidebarLeft,show);
   }
   function toggleRight(force){
-    var show = typeof force==='boolean'?force:sidebarRight.hasAttribute('hidden');
-    setHidden(sidebarRight,!show); void sidebarRight.offsetWidth;
-    sidebarRight.classList.toggle('is-open',show); forceRevealRight(show);
-    show?openOverlay():closeOverlay(); trapFocus(sidebarRight,show);
+  var show = typeof force==='boolean' ? force : sidebarRight.hasAttribute('hidden');
+  setHidden(sidebarRight, !show);
+  void sidebarRight.offsetWidth; // reflow
+  sidebarRight.classList.toggle('is-open', show);
+  if (show) {
+    sidebarRight.style.transform = 'translateX(0)';
+    sidebarRight.style.right = '0';
+    sidebarRight.style.left = 'auto';
+    openOverlay();
+  } else {
+    sidebarRight.style.transform = '';
+    sidebarRight.style.right = '';
+    sidebarRight.style.left = '';
+    closeOverlay();
   }
+  trapFocus(sidebarRight, show);
+}
 
   // ---- Renderers ----
   function postcardNode(p){
@@ -247,6 +259,7 @@
     setHidden(sidebarRight,false); void sidebarRight.offsetWidth;
     sidebarRight.classList.add('is-open'); forceRevealRight(true);
     openOverlay(); trapFocus(sidebarRight,true);
+    toggleRight(true);
   }
 
   // ---- SidebarLeft: Label utama → dropdown posting A–Z ----
@@ -359,6 +372,16 @@
     if(document.activeElement===chatInput && e.key==='ArrowUp' && !chatInput.value){ chatInput.value=lastSent; chatInput.selectionStart=chatInput.selectionEnd=chatInput.value.length; }
   });
 
+  // setelah deklarasi function measureChatbar()
+var ro;
+try {
+  ro = new ResizeObserver(function(){ measureChatbar(); });
+  if (chatbar) ro.observe(chatbar);
+} catch(e) {
+  // fallback: resize events sudah ada
+}
+
+  
   // ---- Boot ----
   document.addEventListener('DOMContentLoaded', function(){
     measureChatbar(); updateSmart();
@@ -378,5 +401,6 @@
     room.addEventListener('focusin', function(){ setTimeout(updateSmart,0); });
     window.addEventListener('resize', function(){ measureChatbar(); updateSmart(); }, {passive:true});
     window.addEventListener('orientationchange', function(){ measureChatbar(); updateSmart(); });
+    setTimeout(measureChatbar, 300);
   });
 })();
