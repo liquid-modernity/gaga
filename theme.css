@@ -108,6 +108,12 @@ body[data-theme="glass"][data-motion="on"][data-bg="video"] #bg video{opacity:1}
 .sb-bottom{bottom:0;border-top:1px solid var(--border-muted)}
 .sb-mid{flex:1;overflow:auto;padding:var(--sp-4)}
 
+/* fix: hindari border ganda pada panel */
+.sidebar{ border:0 !important; }
+#sidebarLeft{  border-inline-end:1px solid var(--border-muted) !important; }
+#sidebarRight{ border-inline-start:1px solid var(--border-muted) !important; }
+
+
 /* Mobile ≤1024px: sidebars overlay (tidak push) */
 @media (max-width:1024px){
   #shell.layout{ grid-template-columns:1fr; }
