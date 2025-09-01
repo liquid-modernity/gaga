@@ -19,7 +19,17 @@
   const chatbar = $('#chatbar'), chatForm = $('#chatForm'), chatInput = $('#chatInput'), filePicker = $('#filePicker');
   const smartBtn = $('#smartScroll');
   const dockbar = $('#dockbar'), dockSheet = $('.dock__sheet', dockbar), dockScrim = $('.dock__scrim', dockbar);
-
+  const $ = (s, r=document) => r.querySelector(s);
+  const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
+  const root = document.documentElement;
+  const body = document.body;
+  const shell = $('#shell');
+  const overlay = $('#overlay');
+  const left = $('#sidebarLeft');
+  const right = $('#sidebarRight');
+  const room = $('#roomchat');
+  const feed = $('#feed');
+            
             /* ===== Config (tambahan) ===== */
 const POP_COUNT  = parseInt(document.body.dataset.popcount || '3', 10);
 const FEAT_COUNT = parseInt(document.body.dataset.featcount || '3', 10);
@@ -603,3 +613,139 @@ function smartScrollGlobal(){ window.scrollTo({ top: document.body.scrollHeight,
   window.addEventListener('popstate', handleLocation);
 
 })();
+
+ /* ---------- A. Push-layout widths (desktop) ---------- */
+  const W_LEFT  = getComputedStyle(document.documentElement).getPropertyValue('--w-left').trim()  || '280px';
+  const W_RIGHT = getComputedStyle(document.documentElement).getPropertyValue('--w-right').trim() || '360px';
+
+  function setLeft(open){
+    root.style.setProperty('--sb-left', open ? W_LEFT : '0px');
+    left?.classList.toggle('is-open', !!open);
+    shell?.setAttribute('data-left', open ? 'open' : 'closed');
+  }
+  function setRight(open){
+    root.style.setProperty('--sb-right', open ? W_RIGHT : '0px');
+    right?.classList.toggle('is-open', !!open);
+    shell?.setAttribute('data-right', open ? 'open' : 'closed');
+  }
+
+  /* ---------- B. Overlay + focus trap minimal ---------- */
+  let lastFocus = null;
+  function openOverlay() {
+    overlay.hidden = false;
+    lastFocus = document.activeElement;
+    overlay.addEventListener('click', closeAll, { once:true });
+    document.addEventListener('keydown', escClose, { once:true });
+  }
+  function closeOverlay() {
+    overlay.hidden = true;
+    document.removeEventListener('keydown', escClose, { once:true });
+    if (lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+  function escClose(e){ if(e.key==='Escape') closeAll(); }
+  function closeAll(){
+    setLeft(false); setRight(false);
+    $('#dockbar')?.setAttribute('hidden','hidden');
+    closeOverlay();
+    shell?.removeAttribute('data-left'); shell?.removeAttribute('data-right');
+  }
+
+  /* ---------- C. Delegasi tombol global ---------- */
+  document.addEventListener('click', (e)=>{
+    const btn = e.target.closest('[data-action]');
+    if(!btn) return;
+
+    const action = btn.getAttribute('data-action');
+    if(action==='toggle-left'){ 
+      const open = !left.classList.contains('is-open'); setLeft(open);
+      if(open) openOverlay(); else closeOverlay();
+    }
+    if(action==='toggle-right'){
+      const open = !right.classList.contains('is-open'); setRight(open);
+      if(open) openOverlay(); else closeOverlay();
+    }
+    if(action==='toggle-dock' || action==='open-dock'){
+      const dock = $('#dockbar');
+      const hidden = dock.hasAttribute('hidden');
+      if(hidden){ dock.removeAttribute('hidden'); openOverlay(); } else { dock.setAttribute('hidden','hidden'); closeOverlay(); }
+    }
+    if(action==='close'){ closeAll(); }
+
+    if(action==='copy'){
+      const url = btn.getAttribute('data-url') || location.href;
+      navigator.clipboard.writeText(url).then(()=> toast('Tautan disalin.')).catch(()=> toast('Gagal menyalin.'));
+    }
+  });
+
+  /* ---------- D. Router SPA-feel (pushState + popstate) ---------- */
+  // intercept klik <a> internal (post/page/label). hormati [data-no-spa]
+  document.addEventListener('click', (e)=>{
+    const a = e.target.closest('a[href]');
+    if(!a) return;
+    if(a.hasAttribute('data-no-spa')) return;                 // bypass untuk eksternal
+    const url = new URL(a.href, location.origin);
+    if(url.origin !== location.origin) return;                // eksternal → lewat
+    // Label atau post/page Blogger: cegah reload & load in-place
+    if(/\/(p\/|search|label|)\S*/.test(url.pathname) || /\/\d{4}\/\d{2}\//.test(url.pathname)){
+      e.preventDefault();
+      navigate(url.href, { replace:false });
+    }
+  });
+
+  window.addEventListener('popstate', (e)=>{
+    navigate(location.href, { replace:true });
+  });
+
+  async function navigate(href, {replace=false} = {}){
+    try{
+      // contoh routing simpel: jika permalink post → readercard, kalau label → filter feed
+      if(/\/\d{4}\/\d{2}\//.test(href)){         // permalink post
+        await openPostUrl(href);                 // gunakan fungsi kamu yang sudah ada
+      } else if(/\/label\//.test(href)){         // halaman label
+        await openLabel(href.split('/label/')[1]); // implement sesuai feed kamu
+      } else if(/\/p\//.test(href)){             // page statis → readercard
+        await openPageUrl(href);
+      } else {
+        await openHome();                        // fallback: home feed
+      }
+      if(replace) history.replaceState({}, '', href);
+      else history.pushState({}, '', href);
+      document.title = document.title.replace(/\s\|\s.*$/, '') + ' | ' + (new URL(href)).pathname;
+      smartScrollShow(false);
+    }catch(err){
+      console.error(err);
+      toast('Gagal memuat konten.');
+      location.href = href; // fallback hard nav
+    }
+  }
+
+  /* ---------- E. SmartScroll ---------- */
+  const smartBtn = $('#smartScroll');
+  let lastY = 0;
+  room?.addEventListener('scroll',()=>{
+    const y = room.scrollTop;
+    smartScrollShow(y < lastY - 120); // muncul saat scroll ke atas cukup jauh
+    lastY = y;
+  });
+  function smartScrollShow(show){
+    if(!smartBtn) return;
+    if(show) smartBtn.removeAttribute('hidden'); else smartBtn.setAttribute('hidden','hidden');
+  }
+  smartBtn?.addEventListener('click', ()=> room.scrollTo({top:room.scrollHeight, behavior:'smooth'}));
+
+  /* ---------- F. Toast (bubble notifikasi ke stream) ---------- */
+  function toast(msg, type='info'){
+    const b = document.createElement('div');
+    b.className = 'bubble bubble--' + type;
+    b.setAttribute('data-role','system');
+    b.innerHTML = `<p>${msg}</p>`;
+    room?.appendChild(b);
+    room?.scrollTo({top:room.scrollHeight, behavior:'smooth'});
+    setTimeout(()=> b.remove(), 3000);
+  }
+
+  /* ---------- G. Boot: jaga nilai awal ---------- */
+  setLeft(false); setRight(false); // default tertutup
+  // hormati preferensi tema/density/bubble kalau sudah ada di body via data-*
+})();
+ 
