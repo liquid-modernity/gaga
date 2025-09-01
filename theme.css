@@ -184,3 +184,69 @@ a:hover,
 /* === Buble tail 90°, radius 18 sudah ada — jaga max width === */
 .bubble{max-width:min(85%,65ch)}
 
+/* === STABILIZER v2025-09-03 === */
+
+/* Vars dasar */
+:root{
+  --w-left: 320px;
+  --w-right: 360px;
+  --gap: 16px;
+  --center-max: 880px;
+  --center-pad: 16px;
+  --chatbar-h: 72px;
+}
+
+/* Grid utama: 3 kolom yang tidak boleh kolaps */
+#shell.layout{
+  display:grid;
+  grid-template-columns: minmax(0, var(--sb-left,0px)) minmax(0,1fr) minmax(0, var(--sb-right,0px));
+  gap: var(--gap);
+  min-height: 100dvh;
+  min-width: 0;
+}
+.sidebar[hidden]{display:none !important}
+
+/* Centerbar & stream */
+.center{min-width:0; height:100dvh; overflow:auto; display:flex}
+.center-wrap{min-width:0; width:min(100%, calc(var(--center-max) + 2*var(--center-pad)));
+  margin:auto; padding:16px var(--center-pad) calc(var(--chatbar-h) + 18px);
+  display:flex; flex-direction:column; gap:var(--gap)}
+#roomchat{min-width:0}
+
+/* Sidebars: push di desktop, overlay di mobile */
+.sidebar{background:var(--surface-2, #121418); color:inherit; border-radius:18px}
+@media (max-width:1024px){
+  #shell.layout{grid-template-columns: 1fr}
+  .sidebar{position:fixed; top:0; bottom:0; width:min(92vw,340px); z-index:7; transform:translateX(-100%); transition:transform .22s}
+  #sidebarRight{left:auto; right:0; transform:translateX(100%)}
+  .sidebar.is-open{transform:translateX(0)}
+}
+
+/* Dockbar (top-sheet) */
+.dock[hidden]{display:none !important}
+.dock.open .dock__sheet{transform:translateY(0)}
+.dock__sheet{position:fixed; left:50%; transform:translate(-50%,-8px); top:8px; width:min(980px, 96vw);
+  background:var(--surface-2,#121418); border-radius:18px; transition:transform .22s; z-index:9}
+.dock__scrim{position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:8}
+
+/* Chatbar */
+.chatbar{position:sticky; bottom:0; left:0; right:0; z-index:6}
+.chat-form{display:flex; gap:8px; padding:10px; background:var(--surface-2,#121418); border-radius:18px}
+.chat-form input[type="text"]{flex:1; min-width:0}
+
+/* Bubbles & cards */
+.bubble{max-width:min(85%,65ch); background:var(--surface-2,#13161b); border-radius:18px; padding:12px 14px}
+.group>.eyebrow{margin:6px 4px 8px}
+.postcard,.readercard{background:var(--surface-2,#13161b); border-radius:18px; padding:14px; display:grid; grid-template-columns:120px 1fr; gap:12px}
+.postcard .thumb img{border-radius:14px; width:100%; height:auto}
+.postcard .title{margin:4px 0 2px; font-size:1.05rem}
+.postcard .actions,.reader-actions{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px}
+.iconbtn{display:inline-flex; align-items:center; gap:6px; padding:8px 10px; border-radius:12px; background:rgba(255,255,255,.05)}
+.iconbtn:hover{color:#ff2ea6}
+
+/* Smart scroll */
+.smartscroll{position:fixed; right:18px; bottom:calc(var(--chatbar-h) + 18px); padding:8px 10px; border-radius:12px}
+
+/* Minor fix untuk judul terpenggal vertikal */
+h1,h2,h3,h4,h5,h6{word-break:break-word}
+
