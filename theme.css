@@ -135,3 +135,52 @@ body[data-theme="glass"][data-bg="video"] #bg video{opacity:1}
 .rs-pane{display:none}.rs-pane.is-active{display:block}
 
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* === FIX: layout grid desktop supaya center tidak kolaps === */
+#shell.layout{
+  display:grid;
+  grid-template-columns: minmax(0, var(--sb-left, 0px)) minmax(0, 1fr) minmax(0, var(--sb-right, 0px));
+  gap: var(--gap);
+  align-items:start;
+  background: var(--bg-surface);
+  color: var(--text-1);
+  min-width: 0;              /* penting */
+}
+.center{min-width:0; overflow:auto; height:100dvh; display:flex; flex-direction:column}
+.center-wrap{
+  width: min(100%, calc(var(--center-max) + 2*var(--center-pad)));
+  margin-inline: auto;
+  padding: 16px var(--center-pad) calc(var(--chatbar-h) + 18px);
+  display:flex; flex-direction:column; gap:var(--gap);
+  min-width:0;               /* penting */
+}
+#roomchat{min-width:0}
+
+/* === FIX: sidebar mode overlay di mobile, push di desktop === */
+@media (max-width: 1024px){
+  #shell.layout{ grid-template-columns: 1fr }
+  .sidebar{ position:fixed; inset:0 auto 0 0; width:min(92vw,340px);
+    transform:translateX(-100%); transition:transform .22s; z-index:7 }
+  #sidebarRight{ left:auto; right:0; transform:translateX(100%) }
+  .sidebar.is-open{ transform:translateX(0) }
+}
+
+/* === Hover magenta global === */
+a:hover,
+.iconbtn:hover,
+.page-item:hover,
+.label-item summary:hover { color:#ff2ea6 }   /* magenta */
+
+/* === Tombol/ikon agar teks bisa disembunyikan saat sempit (sudah ada) === */
+@container (max-width:560px){ .postcard{grid-template-columns:1fr}
+  .postcard .actions .iconbtn span{display:none}
+  .iconbtn{padding:8px}
+}
+@container (max-width:480px){
+  .reader-actions .iconbtn span{display:none}
+  .reader-actions .iconbtn{padding:8px}
+}
+
+/* === Buble tail 90°, radius 18 sudah ada — jaga max width === */
+.bubble{max-width:min(85%,65ch)}
+
