@@ -20,6 +20,10 @@
   const smartBtn = $('#smartScroll');
   const dockbar = $('#dockbar'), dockSheet = $('.dock__sheet', dockbar), dockScrim = $('.dock__scrim', dockbar);
 
+            /* ===== Config (tambahan) ===== */
+const POP_COUNT  = parseInt(document.body.dataset.popcount || '3', 10);
+const FEAT_COUNT = parseInt(document.body.dataset.featcount || '3', 10);
+
   /* ===== State ===== */
   let postsIndex = [];     // summary index (id, url, title, labels, date, excerpt, image)
   let pagesIndex = [];     // pages (id, url, title)
@@ -178,6 +182,7 @@
     trapFocus(sidebarRight, show);
     applyPushLayout();
   }
+  applyPushLayout(); updateSmartGlobal();
 
   /* ===== Renderers ===== */
   function postcardNode(p){
@@ -443,28 +448,52 @@
     renderHome();
   }
 
-  /* ===== Home boot (sapaan + popular + featured + penutup) ===== */
-  function renderHome(){
-    room.innerHTML='';
-    addBubble('Selamat datang di Gaga 👋','info','system');
+  /* ===== Home boot (popular & featured customizable) ===== */
+function renderHome(){
+  room.innerHTML = '';
+  addBubble('Selamat datang di Gaga 👋','info','system');
 
-    // Popular: pakai label 'Popular' jika ada, fallback 4 pos terbaru
-    const popular = postsIndex.filter(p=> (p.labels||[]).includes('Popular')).slice(0,4);
-    renderFeed(popular.length?popular:postsIndex.slice(0,4),'Popular Post');
+  // Popular dari label 'Popular' bila ada, jika tidak → pos terbaru
+  fetchPostsSummary({ label:'Popular', max: POP_COUNT }, list=>{
+    const use = (list && list.length) ? list.slice(0, POP_COUNT) : postsIndex.slice(0, POP_COUNT);
+    renderFeed(use, 'Popular Post');
+    updateSmartGlobal();
+  });
 
-    // Featured: label 'Featured' jika ada, fallback 1 pos terbaru
-    const featured = postsIndex.filter(p=> (p.labels||[]).includes('Featured')).slice(0,1);
-    if((featured.length?featured:postsIndex.slice(0,1)).length){
-      const hr=document.createElement('div'); hr.style.height='4px';
-      feed.appendChild(hr);
-      renderFeed(featured.length?featured:postsIndex.slice(0,1),'Featured Post');
-    }
+  // Featured dari label 'Featured'; fallback terbaru sesudah popular
+  fetchPostsSummary({ label:'Featured', max: FEAT_COUNT }, list=>{
+    const use = (list && list.length) ? list.slice(0, FEAT_COUNT) : postsIndex.slice(0, FEAT_COUNT);
+    // sisipkan heading kedua tanpa menghapus feed popular
+    const h = document.createElement('h2'); h.className='eyebrow'; h.textContent='Featured Post';
+    feed.appendChild(h);
+    use.forEach(p=> feed.appendChild(postcardNode(p)));
+    updateSmartGlobal();
+  });
 
-    addBubble('Buka label di kiri atau Dockbar (Ctrl+,) untuk mengatur tampilan.','success','system');
-    pushURL('/'); // tampilkan root
+  addBubble('Gunakan Label di kiri atau Dockbar (Ctrl+,) untuk mengatur tampilan.','success','system');
+  pushURL('/'); // alamat root
+}
+
+ 
+  /* ===== Event delegation untuk semua kartu di #feed ===== */
+feed.addEventListener('click', (e)=>{
+  const btn = e.target.closest('.iconbtn'); if(!btn) return;
+  const card = e.target.closest('.postcard'); if(!card) return;
+  const id = card.getAttribute('data-id');
+  const data = postsIndex.find(x=>x.id===id) || { id, url:'' };
+  if(btn.classList.contains('act-copy')){
+    if(navigator.clipboard) navigator.clipboard.writeText(data.url || location.href);
+  } else if(btn.classList.contains('act-comment')){
+    openRight('comments', data);
+  } else if(btn.classList.contains('act-props')){
+    openRight('meta', data);
+  } else if(btn.classList.contains('act-read')){
+    openPost(data);
   }
+});
 
-  /* ===== Events ===== */
+             /* ===== Events ===== */
+            
   room.addEventListener('scroll', ()=>{ autoStickBottom = nearBottom(); updateSmart(); }, {passive:true});
   smartBtn.addEventListener('click', smartScroll);
 
@@ -519,6 +548,18 @@
     if(document.activeElement===chatInput && e.key==='ArrowUp' && !chatInput.value){ chatInput.value=lastSent; chatInput.selectionStart=chatInput.selectionEnd=chatInput.value.length; }
   });
 
+  /* ===== SmartScroll: amati window, bukan hanya #roomchat ===== */
+function nearBottomGlobal(){
+  const y = window.scrollY + window.innerHeight;
+  const doc = Math.max(
+    document.body.scrollHeight, document.documentElement.scrollHeight,
+    document.body.offsetHeight, document.documentElement.offsetHeight
+  );
+  return (doc - y) < 140;
+}
+function updateSmartGlobal(){ smartBtn && smartBtn.toggleAttribute('hidden', nearBottomGlobal()); }
+function smartScrollGlobal(){ window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); }
+            
   /* ===== Boot ===== */
   document.addEventListener('DOMContentLoaded', ()=>{
     // ukur chatbar (termasuk bila tinggi berubah)
@@ -541,7 +582,9 @@
 
     // Smart scroll vis
     room.addEventListener('focusin', ()=> setTimeout(updateSmart,0));
-    window.addEventListener('resize', applyPushLayout, {passive:true});
+    smartBtn.onclick = smartScrollGlobal;
+    window.addEventListener('scroll', updateSmartGlobal, { passive:true });
+    window.addEventListener('resize', updateSmartGlobal, { passive:true });;
     window.addEventListener('orientationchange', applyPushLayout);
 
     applyPushLayout();
