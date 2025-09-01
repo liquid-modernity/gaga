@@ -281,3 +281,40 @@ a:hover, .iconbtn:hover, .page-item:hover, .post-link:hover{
 @media (max-width:480px){
   .center-wrap{ padding-bottom: calc(var(--chatbar-h,64px) + 28px); }
 }
+
+/* --- Grid shell: gunakan fallback bila var kosong --- */
+#shell.layout{
+  display:grid;
+  grid-template-columns:
+    minmax(0, var(--sb-left, 0px))
+    minmax(0, 1fr)
+    minmax(0, var(--sb-right, 0px));
+}
+
+/* --- Center column tidak ngunci lebar --- */
+.center{ min-width:0; }
+.center-wrap{
+  min-width:0;
+  width: min(980px, 100%);     /* nyaman baca desktop */
+  margin-inline:auto;
+  padding: var(--space-6,24px) var(--space-4,16px) calc(var(--chatbar-h,64px) + 20px);
+}
+
+/* --- Semua konten di center boleh menyusut; cegah teks jadi 1 huruf/line --- */
+.center *{ min-width:0; }
+.postcard .body{ min-width:0; }
+.postcard .title{ overflow-wrap:anywhere; word-break:normal; }
+.readercard .title{ overflow-wrap:anywhere; word-break:normal; }
+
+/* --- SmartScroll posisinya aman di atas chatbar --- */
+.smartscroll{
+  position: sticky;
+  bottom: calc(var(--chatbar-h,64px) + 12px);
+  left: 100%;
+  transform: translateX(-120%);
+  z-index: 5;
+}
+
+/* --- Pastikan warna hover magenta konsisten --- */
+a:hover, .iconbtn:hover, .page-item:hover, .post-link:hover{ color: var(--accent,#ff2ea6); }
+
