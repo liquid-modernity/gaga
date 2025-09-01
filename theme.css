@@ -231,3 +231,53 @@ body[data-bubble="wrap"] .bubble{display:block;max-width:65ch}
 /* === Permalink hover warna magenta yang kontras === */
 a:hover, .page-item:hover, .post-link:hover { color: var(--accent); }
 
+/* ==== Layout desktop fix: center tidak “ngempis” ==== */
+:root{
+  --w-left: 288px;      /* lebar sidebar kiri saat open */
+  --w-right: 336px;     /* lebar sidebar kanan saat open */
+}
+
+/* Grid shell: pastikan minmax(0,1fr) agar teks tidak patah huruf-per-baris */
+#shell.layout{
+  display:grid;
+  grid-template-columns: minmax(0,var(--sb-left)) minmax(0,1fr) minmax(0,var(--sb-right));
+  gap: var(--space-6, 24px);
+}
+
+/* kolom center harus boleh menyusut tanpa memaksa word-break */
+.center{ min-width:0; }
+.center-wrap{
+  min-width:0;
+  width: min(960px, 100%);
+  margin-inline:auto;
+  padding: var(--space-6,24px) var(--space-4,16px) calc(var(--chatbar-h,64px) + 20px);
+}
+
+/* tombol SmartScroll melewati chatbar */
+.smartscroll{
+  position: sticky;
+  bottom: calc(var(--chatbar-h,64px) + 12px);
+  left: 100%;
+  transform: translateX(-120%);
+  z-index: 5;
+}
+
+/* Postcard text wrap normal & tidak pecah vertikal */
+.postcard{ display:flex; gap:14px; }
+.postcard .body{ min-width:0; }
+.postcard .title{ overflow-wrap:anywhere; }
+.postcard .excerpt{ color: var(--text-2); }
+
+/* Aksi pada kartu: label teks sembunyikan di layar kecil, muncul di ≥560px */
+.iconbtn span{ display:none; }
+@media (min-width:560px){ .iconbtn span{ display:inline; margin-left:6px; } }
+
+/* Warna hover magenta yang konsisten */
+a:hover, .iconbtn:hover, .page-item:hover, .post-link:hover{
+  color: var(--accent, #ff2ea6);
+}
+
+/* Ruang untuk chatbar pada viewport sempit */
+@media (max-width:480px){
+  .center-wrap{ padding-bottom: calc(var(--chatbar-h,64px) + 28px); }
+}
