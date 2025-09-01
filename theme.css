@@ -256,3 +256,30 @@ body[data-bubble="wrap"] .bubble{display:block;max-width:65ch}
 }
 
 @media (prefers-reduced-motion: reduce){ *{animation:none !important;transition:none !important} }
+
+<!-- CSS (robust, non-blocking, with double fallback) -->
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin="anonymous"/>
+
+<link rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/liquid-modernity/gaga@main/theme.css"
+      media="print" onload="this.media='all'"/>
+
+
+(function(href){
+  function cssOK(){
+    return !!getComputedStyle(document.documentElement)
+      .getPropertyValue('--gap').trim();
+  }
+  if(!cssOK()){
+    var l=document.createElement('link'); l.rel='stylesheet'; l.href=href;
+    document.head.appendChild(l);
+  }
+  window.addEventListener('load', function(){
+    if(!cssOK()){
+      var l=document.createElement('link'); l.rel='stylesheet'; l.href=href + '?v=' + Date.now();
+      document.head.appendChild(l);
+    }
+  });
+})('https://cdn.jsdelivr.net/gh/liquid-modernity/gaga@main/theme.css');
+
+
