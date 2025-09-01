@@ -38,6 +38,15 @@ const FEAT_COUNT = parseInt(document.body.dataset.featcount || '3', 10);
   const openOverlay = ()=> overlay && overlay.removeAttribute('hidden');
   const closeOverlay= ()=> overlay && overlay.setAttribute('hidden','hidden');
 
+/* Nilai awal agar grid valid bahkan sebelum toggle */
+document.documentElement.style.setProperty('--sb-left', '0px');
+document.documentElement.style.setProperty('--sb-right','0px');
+
+/* Pastikan layout langsung terpasang */
+applyPushLayout();
+window.addEventListener('load', applyPushLayout);
+
+            
   function trapFocus(container,on){
     const sel='a[href],button:not([disabled]),input:not([disabled]),[tabindex]:not([tabindex="-1"])';
     if(!on){ if(container.__trap){ document.removeEventListener('keydown',container.__trap); container.__trap=null; } return; }
