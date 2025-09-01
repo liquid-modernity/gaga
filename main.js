@@ -1,6 +1,5 @@
-/*! Gaga Blog – Stream Fix – v2025-09-02 */
-(() => {
-  'use strict';
+/*! Gaga Blog — SPA-Feel Solid — Stabilizer v2025-09-03 */
+(() => {'use strict';
 
   /* ===== Config ===== */
   const BLOG = (window.GAGA_CONFIG && GAGA_CONFIG.blogBase) ||
@@ -13,127 +12,132 @@
   const $  = (s,c)=> (c||document).querySelector(s);
   const $$ = (s,c)=> Array.from((c||document).querySelectorAll(s));
   const room = $('#roomchat');
-  const left = $('#sidebarLeft'); const right = $('#sidebarRight'); const overlay = $('#overlay');
-  const labelList = $('#labelList'); const pageList = $('#pageList');
-  const rsTabs = $$('.rs-tab'); const rsMeta = $('#rs-meta'); const rsToc = $('#rs-toc'); const rsComments = $('#rs-comments');
-  const smart = $('#smartScroll'); const chatForm = $('#chatForm'); const chatInput = $('#chatInput');
+  const left = $('#sidebarLeft');
+  const right = $('#sidebarRight');
+  const overlay = $('#overlay');
+  const smart = $('#smartScroll');
+  const chatForm = $('#chatForm');
+  const chatInput = $('#chatInput');
+  const filePicker = $('#filePicker');
+  const rsTabs = $$('.rs-tab'), rsMeta = $('#rs-meta'), rsToc = $('#rs-toc'), rsComments = $('#rs-comments');
+  const labelList = $('#labelList'), pageList = $('#pageList');
+  const dockbar = $('#dockbar'), dockSheet = $('.dock__sheet', dockbar), dockScrim = $('.dock__scrim', dockbar);
 
   /* ===== State ===== */
-  let posts = [];    // summary posts
-  let pages = [];    // summary pages
-  let active = null; // active entry (post/page)
-  let ignorePop = false;
+  let posts = [];    // posts summary
+  let pages = [];    // pages summary
+  let active = null; // active entry
+  let lastSent = '';
+
+  /* ===== Layout safety (kolom push) ===== */
+  document.documentElement.style.setProperty('--sb-left','0px');
+  document.documentElement.style.setProperty('--sb-right','0px');
+  const isMobile = () => matchMedia('(max-width:1024px)').matches;
+
+  function applyPush(){
+    if(isMobile()){ document.documentElement.style.setProperty('--sb-left','0px'); document.documentElement.style.setProperty('--sb-right','0px'); return; }
+    const leftOpen  = !left.hasAttribute('hidden');
+    const rightOpen = !right.hasAttribute('hidden');
+    document.documentElement.style.setProperty('--sb-left',  leftOpen  ? 'var(--w-left)'  : '0px');
+    document.documentElement.style.setProperty('--sb-right', rightOpen ? 'var(--w-right)' : '0px');
+  }
 
   /* ===== Utils ===== */
-  const setHidden = (el,yes)=> yes? (el.setAttribute('hidden',''), el.setAttribute('aria-hidden','true'))
-                                  : (el.removeAttribute('hidden'), el.setAttribute('aria-hidden','false'));
   const strip = s => (s||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
   const words = (t,n)=>{ const w=strip(t).split(/\s+/).filter(Boolean); return w.length<=n?w.join(' '):w.slice(0,n).join(' ')+'…'; };
   const readMin = html => Math.max(1, Math.round(strip(html).split(/\s+/).filter(Boolean).length/200));
   const fmt = iso => iso? new Date(iso).toLocaleDateString('id-ID'): '';
   const nearBottom = ()=> (room.scrollHeight - (room.scrollTop + room.clientHeight)) < 140;
+  const idFrom = eId => ( /post-(\d+)/.exec(eId||'') || [] )[1] || '';
 
   /* ===== JSONP ===== */
   function jsonp(url, ok, err){
-    const id = 'cb'+Math.random().toString(36).slice(2);
-    const s = document.createElement('script');
-    window[id] = d => { try{ ok&&ok(d) } finally { delete window[id]; s.remove(); } };
-    s.onerror = () => { try{ err&&err() } finally { delete window[id]; s.remove(); } };
-    s.src = url + (url.includes('?')?'&':'?') + 'alt=json-in-script&callback=' + id;
+    const cb='cb'+Math.random().toString(36).slice(2);
+    const s=document.createElement('script');
+    window[cb]=d=>{ try{ ok&&ok(d); } finally{ delete window[cb]; s.remove(); } };
+    s.onerror=()=>{ try{ err&&err(); } finally{ delete window[cb]; s.remove(); } };
+    s.src = url + (url.includes('?')?'&':'?') + 'alt=json-in-script&callback=' + cb;
     document.body.appendChild(s);
   }
-  const idFrom = eId => ( /post-(\d+)/.exec(eId||'') || [] )[1] || '';
-  const mapSummary = data => ((data.feed && data.feed.entry) || []).map(e=>{
+  const mapSummary = d => ((d.feed&&d.feed.entry)||[]).map(e=>{
     const link=(e.link||[]).find(l=>l.rel==='alternate');
     return {
-      id: idFrom(e.id && e.id.$t),
-      title: e.title?.$t || '',
-      url: link?link.href:'',
-      published: e.published?.$t || '',
-      author: e.author?.[0]?.name?.$t || 'Admin',
-      labels: (e.category||[]).map(c=>c.term),
-      excerpt: e.summary?.$t || '',
-      image: e.media$thumbnail?.url || ''
+      id:idFrom(e.id&&e.id.$t),
+      title:e.title?.$t||'',
+      url:link?link.href:'',
+      published:e.published?.$t||'',
+      author:e.author?.[0]?.name?.$t||'Admin',
+      labels:(e.category||[]).map(c=>c.term),
+      excerpt:e.summary?.$t||'',
+      image:e.media$thumbnail?.url||''
     };
   });
-
-  function getPostsSummary({label='', q='', max=150}={}, cb){
-    let u = BLOG + (label? `/feeds/posts/summary/-/${encodeURIComponent(label)}?max-results=${max}`
-                          : `/feeds/posts/summary?max-results=${max}`);
-    if(q) u += '&q='+encodeURIComponent(q);
-    jsonp(u, d=>cb(mapSummary(d)), ()=>cb([]));
-  }
-  function getPostFullById(id, cb){
-    jsonp(`${BLOG}/feeds/posts/default/${id}`, d=>{
-      const e=d.entry; if(!e){ cb(null); return; }
-      const link=(e.link||[]).find(l=>l.rel==='alternate');
-      cb({
-        id, url: link?link.href:'', title: e.title?.$t || '',
-        published: e.published?.$t || '', author: e.author?.[0]?.name?.$t || 'Admin',
-        labels: (e.category||[]).map(c=>c.term),
-        content: e.content?.$t || e.summary?.$t || ''
-      });
-    }, ()=>cb(null));
-  }
-  function getPostFullByUrl(url, cb){
-    const hit = posts.find(p=>p.url===url);
-    if(hit) return getPostFullById(hit.id, cb);
-    getPostsSummary({q:url,max:1}, arr => arr[0]? getPostFullById(arr[0].id, cb) : cb(null));
-  }
-  function getPagesSummary(cb){
-    jsonp(`${BLOG}/feeds/pages/summary?max-results=200`, d=>cb(mapSummary(d)), ()=>cb([]));
-  }
-  function getPageFullByUrl(url, cb){
-    const hit = pages.find(p=>p.url===url); if(!hit){ cb(null); return; }
+  const getPostsSummary = (opt,cb)=> jsonp(BLOG + (opt?.label? `/feeds/posts/summary/-/${encodeURIComponent(opt.label)}?max-results=${opt.max||150}`
+                                                           : `/feeds/posts/summary?max-results=${opt?.max||150}`) + (opt?.q?`&q=${encodeURIComponent(opt.q)}`:''), d=>cb(mapSummary(d)), ()=>cb([]));
+  const getPostFullById = (id,cb)=> jsonp(`${BLOG}/feeds/posts/default/${id}`, d=>{
+    const e=d.entry; if(!e) return cb(null);
+    const link=(e.link||[]).find(l=>l.rel==='alternate');
+    cb({ id, url:link?link.href:'', title:e.title?.$t||'', published:e.published?.$t||'', author:e.author?.[0]?.name?.$t||'Admin',
+         labels:(e.category||[]).map(c=>c.term), content:e.content?.$t || e.summary?.$t || '' });
+  }, ()=>cb(null));
+  const getPagesSummary = cb => jsonp(`${BLOG}/feeds/pages/summary?max-results=200`, d=>cb(mapSummary(d)), ()=>cb([]));
+  const getPageFullByUrl = (url,cb)=>{
+    const hit = pages.find(p=>p.url===url); if(!hit) return cb(null);
     jsonp(`${BLOG}/feeds/pages/default/${hit.id}`, d=>{
-      const e=d.entry; if(!e){ cb(null); return; }
+      const e=d.entry; if(!e) return cb(null);
       const link=(e.link||[]).find(l=>l.rel==='alternate');
-      cb({
-        id: hit.id, url: link?link.href:hit.url, title:e.title?.$t || hit.title,
-        published: e.published?.$t || '', author: hit.author || 'Admin',
-        labels: [], content: e.content?.$t || e.summary?.$t || ''
-      });
+      cb({ id:hit.id, url:link?link.href:url, title:e.title?.$t||hit.title, published:e.published?.$t||'', author:'Admin', labels:[],
+           content:e.content?.$t || e.summary?.$t || '' });
     }, ()=>cb(null));
-  }
+  };
+  const getPostFullByUrl = (url,cb)=>{
+    const hit = posts.find(p=>p.url===url); if(hit) return getPostFullById(hit.id, cb);
+    getPostsSummary({q:url,max:1}, list=> list[0]? getPostFullById(list[0].id, cb) : cb(null));
+  };
+  const getComments = (postId,cb)=> jsonp(`${BLOG}/feeds/${postId}/comments/default`, d=>{
+    const items=(d.feed&&d.feed.entry)||[];
+    cb(items.map(e=>({ name:e.author?.[0]?.name?.$t||'Anonim', time:e.published?.$t||'', text:e.content?.$t||e.summary?.$t||'' })));
+  }, ()=>cb([]));
 
   /* ===== Render ===== */
   function bubble(html, tone='info', role='system'){
-    const b=document.createElement('div'); b.className=`bubble bubble--${tone}`; b.dataset.role=role; b.innerHTML=`<p>${html}</p>`;
-    room.appendChild(b); afterAppend(); return b;
+    const n=document.createElement('article');
+    n.className=`bubble bubble--${tone}`; n.dataset.role=role; n.innerHTML=`<p>${html}</p>`;
+    room.appendChild(n); afterAppend();
   }
   function postcard(p){
-    const el=document.createElement('article'); el.className='postcard'; el.dataset.url=p.url; el.dataset.id=p.id;
+    const el=document.createElement('article'); el.className='postcard'; el.dataset.id=p.id; el.dataset.url=p.url;
     el.innerHTML=`
       <div class="thumb">${p.image?`<img alt="" src="${p.image}">`:''}</div>
       <div class="body">
-        <h3 class="title"><a href="${p.url}" data-nav="post" class="post-link">${p.title||'(Tanpa judul)'}</a></h3>
+        <h3 class="title"><a href="${p.url}" data-open="post">${p.title||'(Tanpa judul)'}</a></h3>
         <p class="excerpt">${words(p.excerpt,20)}</p>
         <div class="meta">
           <span class="m"><svg width="18" height="18"><use xlink:href="#i-user"/></svg>${p.author||'Admin'}</span>
           <span class="m"><svg width="18" height="18"><use xlink:href="#i-calendar"/></svg>${fmt(p.published)}</span>
           <span class="m"><svg width="18" height="18"><use xlink:href="#i-clock"/></svg>${Math.max(1,readMin(p.excerpt))} menit</span>
         </div>
-      </div>
-      <div class="actions">
-        <button class="iconbtn act-copy"><svg width="18" height="18"><use xlink:href="#i-copy"/></svg><span>Salin</span></button>
-        <button class="iconbtn act-comment"><svg width="18" height="18"><use xlink:href="#i-comment"/></svg><span>Komentar</span></button>
-        <button class="iconbtn act-props"><svg width="18" height="18"><use xlink:href="#i-info"/></svg><span>Properti</span></button>
-        <button class="iconbtn act-read"><svg width="18" height="18"><use xlink:href="#i-link"/></svg><span>Baca</span></button>
+        <div class="actions">
+          <button class="iconbtn act-copy"><svg width="18" height="18"><use xlink:href="#i-copy"/></svg><span>Salin</span></button>
+          <button class="iconbtn act-comment"><svg width="18" height="18"><use xlink:href="#i-comment"/></svg><span>Komentar</span></button>
+          <button class="iconbtn act-props"><svg width="18" height="18"><use xlink:href="#i-info"/></svg><span>Properti</span></button>
+          <button class="iconbtn act-read"><svg width="18" height="18"><use xlink:href="#i-link"/></svg><span>Baca</span></button>
+        </div>
       </div>`;
     return el;
   }
-  function reader(entry){
-    const el=document.createElement('article'); el.className='readercard'; el.dataset.url=entry.url; el.dataset.id=entry.id;
+  function reader(e){
+    const el=document.createElement('article'); el.className='readercard'; el.dataset.url=e.url; el.dataset.id=e.id;
     el.innerHTML=`
       <header class="reader-head">
-        <h1 class="reader-title">${entry.title||'(Tanpa judul)'}</h1>
+        <h1 class="reader-title">${e.title||'(Tanpa judul)'}</h1>
         <div class="reader-meta">
-          <span class="m"><svg width="18" height="18"><use xlink:href="#i-user"/></svg>${entry.author||'Admin'}</span>
-          <span class="m"><svg width="18" height="18"><use xlink:href="#i-calendar"/></svg>${fmt(entry.published)}</span>
-          <span class="m"><svg width="18" height="18"><use xlink:href="#i-clock"/></svg>${readMin(entry.content)} menit baca</span>
+          <span class="m"><svg width="18" height="18"><use xlink:href="#i-user"/></svg>${e.author||'Admin'}</span>
+          <span class="m"><svg width="18" height="18"><use xlink:href="#i-calendar"/></svg>${fmt(e.published)}</span>
+          <span class="m"><svg width="18" height="18"><use xlink:href="#i-clock"/></svg>${readMin(e.content)} menit baca</span>
         </div>
       </header>
-      <section class="reader-body">${entry.content||''}</section>
+      <section class="reader-body" id="readerArticle">${e.content||''}</section>
       <footer class="reader-actions">
         <button class="iconbtn act-copy"><svg width="18" height="18"><use xlink:href="#i-copy"/></svg><span>Salin tautan</span></button>
         <button class="iconbtn act-comment"><svg width="18" height="18"><use xlink:href="#i-comment"/></svg><span>Komentar</span></button>
@@ -141,210 +145,243 @@
       </footer>`;
     return el;
   }
-  function group(title,list){
+  function group(title, list){
     const box=document.createElement('div'); box.className='group';
     box.innerHTML=`<h2 class="eyebrow">${title}</h2>`;
     list.forEach(p=> box.appendChild(postcard(p)));
     room.appendChild(box); afterAppend();
   }
 
-  /* ===== Sidebar builders (2 level) ===== */
+  function buildTOC(entry){
+    const host=$('#readerArticle'); if(!host) return rsToc.textContent='(Tidak ada konten)';
+    const hs=[...host.querySelectorAll('h2,h3')];
+    rsToc.innerHTML=''; if(!hs.length) return rsToc.textContent='(Tidak ada heading)';
+    hs.forEach((h,i)=>{ const id=h.id||('sec-'+(i+1)); h.id=id; const a=document.createElement('div'); a.className='page-item'; a.textContent=h.textContent; rsToc.appendChild(a); });
+  }
+
+  /* ===== Sidebars & Dock ===== */
+  function setHidden(el,yes){ if(yes){ el.setAttribute('hidden',''); el.setAttribute('aria-hidden','true'); } else { el.removeAttribute('hidden'); el.setAttribute('aria-hidden','false'); } }
+  function trapFocus(box,on){
+    const sel='a[href],button,input,select,textarea,[tabindex]:not([tabindex="-1"])';
+    if(!on){ if(box.__trap){ document.removeEventListener('keydown',box.__trap); box.__trap=null; } return; }
+    box.__trap=(e)=>{ if(e.key!=='Tab') return; const f=[...box.querySelectorAll(sel)].filter(n=>n.offsetParent!==null); if(!f.length) return;
+      const first=f[0], last=f[f.length-1];
+      if(e.shiftKey && document.activeElement===first){ e.preventDefault(); last.focus(); }
+      else if(!e.shiftKey && document.activeElement===last){ e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown',box.__trap);
+  }
+  function openLeft(){ left.classList.add('is-open'); setHidden(left,false); setHidden(overlay,false); applyPush(); trapFocus(left,true); }
+  function closeLeft(){ left.classList.remove('is-open'); setHidden(left,true); setHidden(overlay,true); applyPush(); trapFocus(left,false); }
+  function openRight(tab='meta', entry=active){
+    right.classList.add('is-open'); setHidden(right,false); setHidden(overlay,false); applyPush(); trapFocus(right,true);
+    rsTabs.forEach(b=> b.classList.toggle('is-active', b.dataset.tab===tab));
+    $$('.rs-pane').forEach(p=> p.classList.toggle('is-active', p.id==='rs-'+tab));
+    if(entry){ active=entry; rsMeta.innerHTML=`
+      <div class="meta-row"><b>Judul:</b> ${entry.title}</div>
+      <div class="meta-row"><b>Tanggal:</b> ${fmt(entry.published)}</div>
+      <div class="meta-row"><b>Penulis:</b> ${entry.author||'Admin'}</div>
+      <div class="meta-row"><b>Label:</b> ${(entry.labels||[]).join(', ')||'-'}</div>
+      <div class="meta-row"><b>Link:</b> <a href="${entry.url}" rel="noopener" target="_blank">${entry.url}</a></div>`;
+      buildTOC(entry);
+      rsComments.innerHTML=`<div class="page-item">OAuth 2.0 placeholder — login untuk berkomentar.</div>`;
+      getComments(entry.id, list=>{
+        const holder=document.createElement('div'); holder.className='c-list';
+        holder.innerHTML = list.map(c=>`<div class="comment-card"><div class="who">${c.name} • <span class="small">${new Date(c.time).toLocaleString()}</span></div><div class="text">${c.text}</div></div>`).join('') || '<p class="small">Belum ada komentar.</p>';
+        rsComments.appendChild(holder);
+      });
+    }
+  }
+  function closeRight(){ right.classList.remove('is-open'); setHidden(right,true); setHidden(overlay,true); applyPush(); trapFocus(right,false); }
+  overlay.addEventListener('click', ()=>{ closeLeft(); closeRight(); });
+
+  /* ===== SidebarLeft contents ===== */
   function buildLabels(){
     const map=new Map();
-    posts.forEach(p => (p.labels||[]).forEach(l => map.set(l,(map.get(l)||0)+1)));
-    const agg=[...map.entries()].sort((a,b)=> a[0].localeCompare(b[0],'id'));
+    posts.forEach(p=> (p.labels||[]).forEach(l=> map.set(l,(map.get(l)||0)+1)));
+    const labels=[...map.entries()].sort((a,b)=> a[0].localeCompare(b[0],'id'));
 
     labelList.innerHTML='';
-    agg.forEach(([name,count])=>{
-      const det=document.createElement('details'); det.className='label-item';
+    labels.forEach(([name,count],i)=>{
+      const det=document.createElement('details'); det.className='label-item'; det.open = i<1; // buka yang pertama
       det.innerHTML=`
-        <summary>
-          <svg width="18" height="18"><use xlink:href="#i-tag"/></svg>
-          <span>${name}</span>
+        <summary><svg width="18" height="18"><use xlink:href="#i-tag"/></svg><span>${name}</span>
           <svg width="18" height="18" style="margin-left:auto"><use xlink:href="#i-chevron"/></svg>
-          <small class="count">${count}</small>
-        </summary>
-        <div class="acc" data-label="${name}">
-          <div class="page-item">Memuat…</div>
-        </div>`;
+          <small class="count">${count}</small></summary>
+        <div class="acc" data-label="${name}"><div class="page-item">Memuat…</div></div>`;
       labelList.appendChild(det);
+
       det.addEventListener('toggle', ()=>{
         if(!det.open) return;
-        const acc=det.querySelector('.acc'); if(acc.dataset.loaded) return;
+        const acc=$('.acc',det); if(acc.dataset.loaded) return;
         getPostsSummary({label:name,max:200}, list=>{
           acc.innerHTML='';
-          list.sort((a,b)=> a.title.localeCompare(b.title,'id')).forEach(p=>{
-            const btn=document.createElement('button'); btn.className='page-item'; btn.dataset.nav='post'; btn.dataset.url=p.url;
-            btn.innerHTML=`<svg width="16" height="16"><use xlink:href="#i-page"/></svg><span>${p.title||'(Tanpa judul)'}</span>`;
+          list.sort((a,b)=> (a.title||'').localeCompare(b.title||'','id')).forEach(p=>{
+            const btn=document.createElement('button'); btn.className='page-item'; btn.dataset.url=p.url; btn.dataset.id=p.id;
+            btn.innerHTML=`<svg width="16" height="16"><use xlink:href="#i-page"/></svg> ${p.title||'(Tanpa judul)'}`;
+            btn.addEventListener('click', ()=>{ openPostUrl(p.url); if(isMobile()) closeLeft(); });
             acc.appendChild(btn);
           });
           acc.dataset.loaded='1';
         });
       });
+      // trigger load untuk yang terbuka
+      det.dispatchEvent(new Event('toggle'));
     });
   }
   function buildPages(){
     pageList.innerHTML='';
     pages.forEach(p=>{
-      const btn=document.createElement('button'); btn.className='page-item'; btn.dataset.nav='page'; btn.dataset.url=p.url;
-      btn.innerHTML=`<svg width="16" height="16"><use xlink:href="#i-page"/></svg><span>${p.title||'(Tanpa judul)'}</span>`;
+      const btn=document.createElement('button'); btn.className='page-item'; btn.dataset.url=p.url;
+      btn.innerHTML=`<svg width="16" height="16"><use xlink:href="#i-page"/></svg> ${p.title||'(Tanpa judul)'}`;
+      btn.addEventListener('click', ()=>{ openPageUrl(p.url); if(isMobile()) closeLeft(); });
       pageList.appendChild(btn);
     });
   }
 
-  /* ===== Right panel ===== */
-  function openRight(tab='meta', entry=active){
-    right.classList.add('is-open'); setHidden(right,false); setHidden(overlay,false);
-    document.documentElement.style.setProperty('--sb-right', getComputedStyle(right).width);
-    if(entry) active=entry;
+  /* ===== Stream actions ===== */
+  function afterAppend(){ if(nearBottom()) room.scrollTop = room.scrollHeight; smart.hidden = nearBottom(); }
+  function copy(url){ if(navigator.clipboard) navigator.clipboard.writeText(url||''); bubble(`Tautan disalin:<br><code>${url||''}</code>`,'success'); }
 
-    rsTabs.forEach(b=> b.classList.toggle('is-active', b.dataset.tab===tab));
-    $$('.rs-pane', right).forEach(p=> p.classList.toggle('is-active', p.id==='rs-'+tab));
-
-    if(!entry) return;
-    if(tab==='meta'){
-      rsMeta.innerHTML = `
-        <div class="meta-row"><b>Judul:</b> ${entry.title}</div>
-        <div class="meta-row"><b>Tanggal:</b> ${fmt(entry.published)}</div>
-        <div class="meta-row"><b>Penulis:</b> ${entry.author||'Admin'}</div>
-        <div class="meta-row"><b>Label:</b> ${(entry.labels||[]).join(', ')||'-'}</div>
-        <div class="meta-row"><b>Link:</b> <a href="${entry.url}" target="_blank" rel="noopener">${entry.url}</a></div>`;
-    } else if(tab==='toc'){
-      const tmp=document.createElement('div'); tmp.innerHTML=entry.content||'';
-      const hs=$$('h2,h3', tmp); rsToc.innerHTML='';
-      hs.forEach(h=>{ const d=document.createElement('div'); d.className='page-item'; d.textContent=(h.textContent||'').trim(); rsToc.appendChild(d); });
-      if(!hs.length) rsToc.textContent='(Tidak ada heading)';
-    } else if(tab==='comments'){
-      rsComments.innerHTML = `<div class="page-item">OAuth 2.0 Placeholder — masuk untuk berkomentar.</div>`;
-    }
-  }
-  function closeRight(){ right.classList.remove('is-open'); setHidden(right,true); setHidden(overlay,true); document.documentElement.style.setProperty('--sb-right','0px'); }
-  function openLeft(){ left.classList.add('is-open'); setHidden(left,false); setHidden(overlay,false); document.documentElement.style.setProperty('--sb-left', getComputedStyle(left).width); }
-  function closeLeft(){ left.classList.remove('is-open'); setHidden(left,true); setHidden(overlay,true); document.documentElement.style.setProperty('--sb-left','0px'); }
-
-  overlay.addEventListener('click', ()=>{ closeLeft(); closeRight(); });
-
-  /* ===== Stream helpers ===== */
-  function afterAppend(){ if(nearBottom()) room.scrollTop = room.scrollHeight; smart.toggleAttribute('hidden', nearBottom()); }
-  function copy(text){ if(navigator.clipboard) navigator.clipboard.writeText(text||''); bubble(`Tautan disalin:<br><code>${text||''}</code>`, 'success'); }
-
-  /* ===== Stream actions (delegation) ===== */
-  room.addEventListener('click', (e)=>{
-    const nav = e.target.closest('[data-nav]'); if(nav){ e.preventDefault(); const url=nav.dataset.url || nav.getAttribute('href'); return nav.dataset.nav==='page'? openPage(url) : openPost(url); }
-    const btn = e.target.closest('.iconbtn'); if(!btn) return;
-    const holder = e.target.closest('[data-url]'); const url=holder?.dataset.url || ''; const id=holder?.dataset.id || '';
-    if(btn.classList.contains('act-copy')) copy(url);
+  room.addEventListener('click', e=>{
+    const a=e.target.closest('[data-open="post"]'); if(a){ e.preventDefault(); return openPostUrl(a.getAttribute('href')); }
+    const btn=e.target.closest('.iconbtn'); if(!btn) return;
+    const holder=e.target.closest('[data-url]'); const url=holder?.dataset.url||''; const id=holder?.dataset.id||'';
+    if(btn.classList.contains('act-copy')) copy(url||location.href);
     if(btn.classList.contains('act-comment')) openRight('comments', active || posts.find(p=>p.id===id));
     if(btn.classList.contains('act-props'))   openRight('meta',     active || posts.find(p=>p.id===id));
-    if(btn.classList.contains('act-read') && url) openPost(url);
+    if(btn.classList.contains('act-read')) { if(url) openPostUrl(url); }
   });
 
-  /* ===== SPA-feel routing ===== */
-  function pushURL(u){ ignorePop=true; history.pushState({url:u}, '', u); setTimeout(()=>ignorePop=false, 40); }
-  window.addEventListener('popstate', (ev)=>{ if(ignorePop) return; const u=(ev.state&&ev.state.url)||location.pathname; route(u); });
+  /* ===== Routing (SPA-feel) ===== */
+  function pushURL(u){ try{ history.pushState({url:u},'',u); }catch(_){} }
+  window.addEventListener('popstate', ev=>{ const u=(ev.state&&ev.state.url)||location.pathname; route(u); });
 
   function route(u){
     if(u==='/' || u===BLOG.replace(/^https?:\/\/[^/]+/,'')) return renderHome();
     if(u.includes('/search/label/')){ const label=decodeURIComponent(u.split('/search/label/')[1]||'').replace(/\?.*$/,''); return renderLabel(label); }
-    if(u.includes('/p/')) return openPage(u);
-    return openPost(u);
+    if(u.includes('/p/')) return openPageUrl(u);
+    return openPostUrl(u); // as post
   }
 
-  /* ===== Flows ===== */
   function renderHome(){
     room.innerHTML='';
     bubble('Selamat datang di Gaga 👋','info');
     getPostsSummary({label:'Popular',max:POP}, list=>{
-      const use=list.length? list.slice(0,POP): posts.slice(0,POP);
+      const use = list.length? list.slice(0,POP) : posts.slice(0,POP);
       group('Popular Post', use);
     });
     getPostsSummary({label:'Featured',max:FEAT}, list=>{
-      const use=list.length? list.slice(0,FEAT): posts.slice(0,FEAT);
+      const use = list.length? list.slice(0,FEAT) : posts.slice(0,FEAT);
       group('Featured Post', use);
     });
     bubble('Gunakan Label di kiri atau Dockbar (Ctrl+,) untuk mengatur tampilan.','success');
     pushURL('/');
   }
   function renderLabel(label){
-    room.innerHTML=''; bubble(`Label: <b>${label}</b>`, 'info');
+    room.innerHTML=''; bubble(`Label: <b>${label}</b>`,'info');
     getPostsSummary({label,max:120}, list=>{
       if(!list.length) return bubble('Belum ada posting pada label ini.','warn');
-      group('Postingan', list);
-      pushURL(`/search/label/${encodeURIComponent(label)}`);
+      group('Postingan', list); pushURL(`/search/label/${encodeURIComponent(label)}`);
     });
   }
-  function openPost(url){
+  function openPostUrl(url){
     bubble('Membuka posting…','info');
     getPostFullByUrl(url, entry=>{
       if(!entry) return bubble('Gagal membuka posting.','error');
-      active = entry; room.appendChild(reader(entry)); afterAppend(); pushURL(entry.url);
-      const tag = (entry.labels||[])[0];
+      active=entry; room.appendChild(reader(entry)); afterAppend(); pushURL(entry.url);
+      // similar post (berdasar label pertama)
+      const tag=(entry.labels||[])[0];
       if(tag) getPostsSummary({label:tag,max:6}, list=>{
         const sim=list.filter(p=>p.url!==entry.url).slice(0,3);
         if(sim.length) group('Similar Post', sim);
       });
     });
   }
-  function openPage(url){
+  function openPageUrl(url){
     bubble('Membuka halaman…','info');
     getPageFullByUrl(url, entry=>{
       if(!entry) return bubble('Gagal membuka halaman.','error');
-      active = entry; room.appendChild(reader(entry)); afterAppend(); pushURL(entry.url);
+      active=entry; room.appendChild(reader(entry)); afterAppend(); pushURL(entry.url);
     });
   }
 
-  /* ===== Sidebar events ===== */
-  labelList.addEventListener('click', e=>{
-    const a=e.target.closest('[data-nav="post"]'); if(!a) return; e.preventDefault(); openPost(a.dataset.url);
-  });
-  pageList.addEventListener('click', e=>{
-    const a=e.target.closest('[data-nav="page"]'); if(!a) return; e.preventDefault(); openPage(a.dataset.url);
-  });
-
-  /* ===== Chatbar (demo) ===== */
-  chatForm.addEventListener('submit', (e)=>{
-    e.preventDefault();
-    const v=chatInput.value.trim(); if(!v) return;
-    const b=document.createElement('div'); b.className='bubble'; b.dataset.role='user'; b.innerHTML=`<p>${v}</p>`;
-    room.appendChild(b); chatInput.value=''; afterAppend();
-  });
+  /* ===== Chatbar & shortcuts ===== */
+  function addUserBubble(t){ const n=document.createElement('article'); n.className='bubble'; n.dataset.role='user'; n.innerHTML=`<p>${t}</p>`; room.appendChild(n); afterAppend(); }
+  function doSend(){ const v=chatInput.value.trim(); if(!v) return; lastSent=v; addUserBubble(v); chatInput.value=''; chatInput.focus(); }
+  function doClear(){ chatInput.value=''; chatInput.focus(); }
+  chatForm.addEventListener('submit', e=>{ e.preventDefault(); doSend(); });
   chatForm.addEventListener('click', e=>{
-    const t=e.target.closest('[data-action]'); if(!t) return;
-    if(t.dataset.action==='toggle-left') openLeft();
-    if(t.dataset.action==='toggle-dock') $('#dockbar')?.removeAttribute('hidden'); /* tetap pakai dock kamu */
-    if(t.dataset.action==='clear'){ chatInput.value=''; chatInput.focus(); }
+    const b=e.target.closest('[data-action]'); if(!b) return;
+    const act=b.dataset.action;
+    if(act==='toggle-left') openLeft();
+    if(act==='emoji'){ chatInput.setRangeText('😊', chatInput.selectionStart, chatInput.selectionEnd, 'end'); chatInput.focus(); }
+    if(act==='attach') filePicker.click();
+    if(act==='mic') bubble('🎤 Mic placeholder.','warn');
+    if(act==='clear') doClear();
+    if(act==='send'){ e.preventDefault(); doSend(); }
+    if(act==='toggle-dock'){ dockbar.classList.add('open'); setHidden(dockbar,false); trapFocus(dockSheet,true); }
+  });
+  filePicker.addEventListener('change', ()=>{
+    const fs=[...filePicker.files||[]]; if(!fs.length) return;
+    bubble('📎 '+fs.map(f=>f.name).join(', '),'info'); filePicker.value='';
   });
 
-  /* ===== Smart scroll ===== */
-  smart.addEventListener('click', ()=>{ room.scrollTop = room.scrollHeight; smart.hidden = true; });
-  room.addEventListener('scroll', ()=> smart.toggleAttribute('hidden', nearBottom()), {passive:true});
+  // Dockbar
+  dockbar?.addEventListener('click', e=>{
+    const t=e.target.closest('[data-action]'); if(!t) return;
+    const act=t.dataset.action, val=t.dataset.value, delta=parseFloat(t.dataset.delta||'0');
+    if(act==='close'){ dockbar.classList.remove('open'); setHidden(dockbar,true); trapFocus(dockSheet,false); return; }
+    if(act==='theme'){ document.body.dataset.theme=val; try{localStorage.setItem('theme',val);}catch(_e){} return; }
+    if(act==='tsize'){ const curr=+(getComputedStyle(document.documentElement).getPropertyValue('--ts'))||1; const next=Math.min(1.25,Math.max(0.85,+(curr+delta).toFixed(2))); document.documentElement.style.setProperty('--ts',next); return; }
+    if(act==='density'){ document.body.dataset.density=val; return; }
+    if(act==='bubble'){ document.body.dataset.bubble=val; return; }
+    if(act==='motion'){ document.body.dataset.motion=val; return; }
+    if(act==='ground'){ document.body.dataset.ground=val; return; }
+    if(act==='bg'){ document.body.dataset.bg=val; return; }
+    if(act==='focus'){ document.body.dataset.focus=val; return; }
+    if(act==='reset'){ document.documentElement.style.setProperty('--ts',1); document.body.dataset.density='comfortable'; document.body.dataset.bubble='fit'; document.body.dataset.motion='on'; document.body.dataset.ground='on'; document.body.dataset.bg='static'; document.body.dataset.focus='off'; return; }
+  });
+  dockScrim?.addEventListener('click', ()=>{ dockbar.classList.remove('open'); setHidden(dockbar,true); trapFocus(dockSheet,false); });
+
+  // Keyboard
+  document.addEventListener('keydown', e=>{
+    const mod=e.ctrlKey||e.metaKey;
+    if(e.key==='Escape'){ if(!dockbar.hasAttribute('hidden')){ dockbar.classList.remove('open'); setHidden(dockbar,true); trapFocus(dockSheet,false); return; }
+      if(!left.hasAttribute('hidden')){ closeLeft(); return; }
+      if(!right.hasAttribute('hidden')){ closeRight(); return; }
+    }
+    if(e.key==='/' && !mod && document.activeElement!==chatInput){ e.preventDefault(); chatInput.focus(); chatInput.select(); }
+    if(mod && e.key===','){ e.preventDefault(); dockbar.classList.add('open'); setHidden(dockbar,false); trapFocus(dockSheet,true); }
+    if(mod && e.key.toLowerCase()==='l'){ e.preventDefault(); openLeft(); }
+    if(mod && e.key.toLowerCase()==='r'){ e.preventDefault(); openRight('meta'); }
+    if(document.activeElement===chatInput && e.key==='Enter'){ e.preventDefault(); doSend(); }
+    if(document.activeElement===chatInput && e.key==='ArrowUp' && !chatInput.value){ chatInput.value=lastSent; chatInput.selectionStart=chatInput.selectionEnd=chatInput.value.length; }
+  });
+
+  // Smart scroll
+  smart.addEventListener('click', ()=>{ room.scrollTop = room.scrollHeight; smart.hidden=true; });
+  room.addEventListener('scroll', ()=> smart.hidden = nearBottom(), {passive:true});
 
   /* ===== Boot ===== */
   function boot(){
-    // pastikan kolom center penuh ketika kedua sidebar hidden
-    document.documentElement.style.setProperty('--sb-left','0px');
-    document.documentElement.style.setProperty('--sb-right','0px');
-
-    getPostsSummary({max:150}, list=>{ posts=list; buildLabels(); });
+    applyPush();
     getPagesSummary(list=>{ pages=list; buildPages(); });
-
-    // tampilkan home
-    renderHome();
-
-    // jika user masuk via permalink, route
-    if(location.pathname !== '/' && !location.pathname.match(/\/$/)){
-      route(location.pathname);
-    }
+    getPostsSummary({max:150}, list=>{
+      posts=list; buildLabels();
+      if(location.pathname!=='/') route(location.pathname);
+      else renderHome();
+    });
   }
   window.addEventListener('DOMContentLoaded', boot);
 
-  // panel kanan tabs
+  // Right tabs
   rsTabs.forEach(b=> b.addEventListener('click', ()=>{
     rsTabs.forEach(x=>x.classList.remove('is-active')); b.classList.add('is-active');
-    $$('.rs-pane', right).forEach(p=> p.classList.toggle('is-active', p.id==='rs-'+b.dataset.tab));
+    $$('.rs-pane').forEach(p=> p.classList.toggle('is-active', p.id==='rs-'+b.dataset.tab));
   }));
 
-  // tombol tutup right
+  // Close buttons
   $('[data-action="toggle-right"]')?.addEventListener('click', closeRight);
-  overlay.addEventListener('click', ()=>{ /* close handled above */ });
+
 })();
