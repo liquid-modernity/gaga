@@ -1,7 +1,5 @@
 :root{
-  --center-max: 880px; --center-pad: 16px;
-  --center-min: 360px;
-
+  --center-max: 880px; --center-pad: 16px; --center-min: 360px;
   --r-18:18px; --r-12:12px; --r-pill:999px;
   --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px;
 
@@ -109,11 +107,14 @@ body[data-theme="glass"][data-motion="on"][data-bg="video"] #bg video{opacity:1}
 .p-name{display:block;font-weight:700}
 .p-desc{margin:2px 0 0;color:var(--text-secondary);font-size:var(--fz-small)}
 
-/* Label & Pages (Level 1 saja di sidebar; Level 2 di dalam detail label) */
+/* Label 2-level (Level 1 di sidebar; Level 2 muncul saat details open) */
 .label-list{display:grid;gap:6px;margin-top:8px}
-.label-item{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;border:1px solid var(--border-muted);border-radius:10px;padding:10px;min-height:44px;background:var(--bg-elevated)}
+.label-item{border:1px solid var(--border-muted);border-radius:10px;background:var(--bg-elevated);padding:6px}
+.label-item summary{list-style:none;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px}
+.label-item summary::-webkit-details-marker{display:none}
 .label-item .count{opacity:.75}
 .label-item .acc{display:none;margin-top:8px}
+.label-item[open] .acc{display:block}
 .page-list{display:grid;gap:8px;margin-top:8px}
 .page-item{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:8px;border:1px solid var(--border-muted);border-radius:10px;padding:8px 10px}
 
@@ -124,7 +125,7 @@ body[data-theme="glass"][data-motion="on"][data-bg="video"] #bg video{opacity:1}
 .copyright{display:block;text-align:center;color:var(--text-secondary)}
 
 /* Feed/Postcard */
-.feed{display:grid;gap:16px;padding:16px 0 8px}
+.feed{display:grid;gap:16px;padding:16px 0 calc(var(--chatbar-h) + 16px)}
 .postcard{display:grid;grid-template-columns:120px 1fr;gap:12px;align-items:center;background:var(--bg-elevated);border:1px solid var(--border-muted);border-radius:18px;padding:12px;container-type:inline-size}
 .postcard .thumb{border-radius:12px;overflow:hidden;border:1px solid var(--border-muted);aspect-ratio:4/3;background:#0003}
 .postcard .body{min-width:0}
@@ -151,7 +152,7 @@ body[data-theme="glass"][data-motion="on"][data-bg="video"] #bg video{opacity:1}
 .reader-actions{display:flex;gap:8px;padding:10px 16px;border-top:1px solid var(--border-muted);background:color-mix(in oklab,var(--bg-elevated),#fff 2%);container-type:inline-size}
 @container (max-width:480px){ .reader-actions .iconbtn span{display:none} .reader-actions .iconbtn{padding:8px} }
 
-/* Bubble chat */
+/* Bubble chat (radius 18, tail 90°) */
 .bubble{position:relative;display:inline-block;vertical-align:top;padding:12px 14px;border-radius:18px;max-width:min(85%,65ch);background:var(--bg-elevated);border:1px solid var(--border-muted);box-shadow:0 1px 0 rgba(0,0,0,.06)}
 .bubble p{margin:0}
 body[data-bubble="wrap"] .bubble{display:block;max-width:65ch}
