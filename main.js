@@ -1,4 +1,4 @@
-/*! Gaga Blog — SPA-Feel Solid — v2025-09-02 */
+/*! Gaga Blog — SPA-Feel Solid — v2025-09-03 */
 (function(){'use strict';
 
   /* ===== Config ===== */
@@ -21,18 +21,18 @@
   const dockbar = $('#dockbar'), dockSheet = $('.dock__sheet', dockbar), dockScrim = $('.dock__scrim', dockbar);
 
   /* ===== State ===== */
-  let postsIndex = [];     // untuk index label + feed
-  let pagesIndex = [];
+  let postsIndex = [];     // summary index (id, url, title, labels, date, excerpt, image)
+  let pagesIndex = [];     // pages (id, url, title)
   let activePost = null;
   let autoStickBottom = true;
   let lastSent = '';
   let feedScrollTop = 0;
 
   /* ===== Utilities ===== */
+  const isMobile = ()=> matchMedia('(max-width:1024px)').matches;
   const setHidden = (el, yes)=>{ if(!el) return; if(yes){ el.setAttribute('hidden','hidden'); el.setAttribute('aria-hidden','true'); } else { el.removeAttribute('hidden'); el.setAttribute('aria-hidden','false'); } };
   const openOverlay = ()=> overlay && overlay.removeAttribute('hidden');
   const closeOverlay= ()=> overlay && overlay.setAttribute('hidden','hidden');
-  const isMobile = ()=> window.matchMedia('(max-width:1024px)').matches;
 
   function trapFocus(container,on){
     const sel='a[href],button:not([disabled]),input:not([disabled]),[tabindex]:not([tabindex="-1"])';
@@ -87,8 +87,8 @@
   }
 
   /* ===== Blogger Feeds ===== */
-  function fetchPostsSummary({label='', q='', max=50}={}, cb){
-    max = Math.min(500, Math.max(1, +max||50));
+  function fetchPostsSummary({label='', q='', max=300}={}, cb){
+    max = Math.min(500, Math.max(1, +max||300));
     let u = BLOG_BASE + (label ? `/feeds/posts/summary/-/${encodeURIComponent(label)}?max-results=${max}`
                                : `/feeds/posts/summary?max-results=${max}`);
     if(q) u += '&q=' + encodeURIComponent(q);
@@ -131,10 +131,21 @@
       const items=(data.feed && data.feed.entry)||[];
       const mapped=items.map(e=>{
         const link=(e.link||[]).find(l=>l.rel==='alternate');
-        return { id:e.id.$t, title:e.title.$t, url: link?link.href:'' };
+        return { id:(e.id&&e.id.$t)||'', title:(e.title&&e.title.$t)||'', url: link?link.href:'' };
       });
       cb && cb(mapped);
     }, ()=>cb && cb([]));
+  }
+  function fetchPageFull(pageId, cb){
+    loadJSONP(BLOG_BASE + '/feeds/pages/default/' + pageId, data=>{
+      const e=data.entry||{};
+      const link=(e.link||[]).find(l=>l.rel==='alternate');
+      cb && cb({
+        id:pageId, title:(e.title&&e.title.$t)||'',
+        url: link?link.href:'', date:(e.published&&e.published.$t)||'',
+        content:(e.content&&e.content.$t)||''
+      });
+    }, ()=>cb && cb(null));
   }
 
   function fetchComments(postId, cb){
@@ -197,15 +208,19 @@
     $('.act-copy',card).addEventListener('click',()=>{ if(navigator.clipboard){ navigator.clipboard.writeText(p.url||''); } });
     $('.act-comment',card).addEventListener('click',()=> openRight('comments',p));
     $('.act-props',card).addEventListener('click',()=> openRight('meta',p));
-    $('.act-read',card).addEventListener('click',()=> openPostById(p.id));
+    $('.act-read',card).addEventListener('click',()=> openPost(p));
 
-    // Judul klik = baca
-    $('.title',card).addEventListener('click',()=> openPostById(p.id));
+    // klik judul = baca
+    $('.title',card).addEventListener('click',()=> openPost(p));
     return card;
   }
 
-  function renderFeed(list){
+  function renderFeed(list, title){
     feed.innerHTML='';
+    if(title){
+      const h=document.createElement('h2'); h.className='eyebrow'; h.textContent=title;
+      feed.appendChild(h);
+    }
     list.forEach(p=> feed.appendChild(postcardNode(p)));
   }
 
@@ -213,7 +228,6 @@
 
   function renderReader(p){
     activePost=p;
-    // hapus reader lama
     $$('.readercard', room).forEach(n=>n.remove());
 
     const mins=minutesRead(p.content||p.excerpt||'');
@@ -227,11 +241,11 @@
         "<span><svg width='18' height='18'><use href='#i-user' xlink:href='#i-user'/></svg> Admin</span>"+
         "<span><svg width='18' height='18'><use href='#i-calendar' xlink:href='#i-calendar'/></svg> "+fmtDate(p.date)+"</span>"+
         "<span><svg width='18' height='18'><use href='#i-clock' xlink:href='#i-clock'/></svg> "+mins+" menit baca</span>"+
-        "<span><svg width='18' height='18'><use href='#i-tag' xlink:href='#i-tag'/></svg> "+labels+"</span>"+
+        (labels? "<span><svg width='18' height='18'><use href='#i-tag' xlink:href='#i-tag'/></svg> "+labels+"</span>" : "")+
       "</div></header>"+
       "<div class='reader-body' id='readerArticle'>"+
         (p.image ? "<img src='"+p.image+"' alt='Gambar "+p.title+"' width='768' height='480' loading='lazy' decoding='async'/>" : "")+
-        (p.content||'')+
+        (p.content||p.excerpt||'')+
       "</div>"+
       "<div class='reader-actions' role='group' aria-label='Aksi artikel'>"+
         "<button class='iconbtn act-copy'><svg width='18' height='18'><use href='#i-copy' xlink:href='#i-copy'/></svg><span>Salin tautan</span></button>"+
@@ -243,7 +257,7 @@
     if(autoStickBottom) smartScroll(); else updateSmart();
     buildToc();
 
-    $('.act-copy',art).addEventListener('click',()=>{ if(navigator.clipboard){ navigator.clipboard.writeText(p.url||''); } });
+    $('.act-copy',art).addEventListener('click',()=>{ if(navigator.clipboard){ navigator.clipboard.writeText(p.url||location.href); } });
     $('.act-comment',art).addEventListener('click',()=> openRight('comments',p));
     $('.act-props',art).addEventListener('click',()=> openRight('meta',p));
   }
@@ -298,7 +312,7 @@
     toggleRight(true);
   }
 
-  /* ===== SidebarLeft: label 2-level (tanpa “Semua Label”) ===== */
+  /* ===== SidebarLeft: label 2-level (accordion) ===== */
   function buildLabelsDropdown(allPosts){
     const counts = {};
     allPosts.forEach(p=> (p.labels||[]).forEach(l=> counts[l]=(counts[l]||0)+1 ));
@@ -307,19 +321,20 @@
     if(!labels.length){ labelList.innerHTML="<p class='small'>Belum ada label.</p>"; return; }
 
     labelList.innerHTML = labels.map((l,idx)=>(
-      "<details class='label-item' data-label='"+l+"' id='lab-"+idx+"'>"+
+      "<details class='label-item' data-label='"+l+"' id='lab-"+idx+"' open>"+
         "<summary><svg width='18' height='18'><use href='#i-tag' xlink:href='#i-tag'/></svg>"+
         "<span>"+l+"</span><span class='count small'>"+counts[l]+"</span></summary>"+
         "<div class='acc' aria-live='polite'></div>"+
       "</details>"
     )).join('');
 
+    // Expand/collapse, isi drop di-load saat pertama kali open
     $$('.label-item', labelList).forEach(d=>{
-      d.addEventListener('toggle', ()=>{
-        if(!d.open) return;
+      const loadList=()=>{
         const lab = d.getAttribute('data-label');
         const holder = $('.acc', d);
-        if(holder && !holder.hasChildNodes()){
+        if(holder && !holder.__loaded){
+          holder.__loaded=true;
           holder.innerHTML = "<p class='small'>Memuat…</p>";
           fetchPostsSummary({label:lab, max:200}, list=>{
             list.sort((a,b)=> (a.title||'').localeCompare(b.title||'','id'));
@@ -328,27 +343,34 @@
             )).join('');
             $$('.post-link', holder).forEach(btn=>{
               btn.addEventListener('click', ()=>{
-                const pid=btn.getAttribute('data-id');
-                openPostById(pid);
+                openPost(postsIndex.find(x=>x.id===btn.getAttribute('data-id')) || {id:btn.getAttribute('data-id'), url:''});
                 if(isMobile()) toggleLeft(false);
               });
             });
           });
         }
-        // tutup label lain agar 1 terbuka saja
-        $$('.label-item', labelList).forEach(x=>{ if(x!==d) x.open=false; });
-      });
+      };
+      // muat langsung satu label pertama (UX cepat)
+      loadList();
+      d.addEventListener('toggle', ()=>{ if(d.open) loadList(); });
     });
   }
 
-  /* ===== Pages ===== */
+  /* ===== Pages (SPA, no reload) ===== */
   function buildPagesList(pages){
     if(!pages || !pages.length){ pageList.innerHTML="<p class='small'>Belum ada halaman.</p>"; return; }
     pageList.innerHTML = pages.map(pg=>(
-      "<a href='"+pg.url+"' class='page-item' target='_blank' rel='noopener'>"+
+      "<button class='page-item page-open' data-id='"+pg.id+"'>"+
         "<svg width='16' height='16'><use href='#i-page' xlink:href='#i-page'/></svg> "+pg.title+
-      "</a>"
+      "</button>"
     )).join('');
+    $$('.page-open', pageList).forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const id=btn.getAttribute('data-id'); const pg=pagesIndex.find(x=>x.id===id);
+        openPage(pg||{id, url:''});
+        if(isMobile()) toggleLeft(false);
+      });
+    });
   }
 
   /* ===== Chatbar (minimal) ===== */
@@ -365,24 +387,82 @@
   function doClear(){ chatInput.value=''; chatInput.focus(); }
   function doAttach(){ filePicker.click(); }
 
-  /* ===== Router (SPA feel) ===== */
-  function openPostById(id){
+  /* ===== Router helpers (SPA feel, permalink in address bar) ===== */
+  function pushURL(url){ try{ history.pushState({},'',url); }catch(_e){} }
+
+  function openPost(p){
+    // Pastikan punya id; kalau dipanggil dari list label level-2, p bisa minim
+    if(!p.id){
+      const hit=postsIndex.find(x=>x.url===p.url);
+      if(hit) p=hit;
+    }
     feedScrollTop = feed.parentElement ? feed.parentElement.scrollTop : 0;
-    renderReaderById(id);
-    history.pushState({post:id}, '', '#/post/'+id);
+    if(p.url) pushURL(p.url); else pushURL('#/post/'+p.id);
+    renderReaderById(p.id);
   }
-  function showFeed(){
-    // cukup scroll ke posisi sebelumnya
-    if(feed.parentElement) feed.parentElement.scrollTop = feedScrollTop || 0;
-    // hapus reader agar mental model jelas
-    $$('.readercard', room).forEach(n=>n.remove());
+  function openLabel(label){
+    renderFeed(postsIndex.filter(p=> (p.labels||[]).includes(label)), 'Label: '+label);
+    pushURL(BLOG_BASE.replace(/^https?:\/\/[^/]+/,'') + '/search/label/'+encodeURIComponent(label));
+  }
+  function openPage(pg){
+    if(pg.url) pushURL(pg.url);
+    fetchPageFull(pg.id, full=>{
+      if(!full) return;
+      activePost = { id: full.id, url: full.url, title: full.title, date: full.date, labels: ['Halaman'], content: full.content };
+      renderReader(activePost);
+      setRsTab('toc'); // biasanya halaman punya ToC pendek
+    });
   }
 
-  window.addEventListener('popstate', ()=>{
-    const m = /#\/post\/(\d+)/.exec(location.hash);
-    if(m){ renderReaderById(m[1]); }
-    else { showFeed(); }
-  });
+  // Parse URL saat popstate atau boot → agar SPA feel tetap sinkron
+  function handleLocation(){
+    const path = location.pathname, hash=location.hash;
+    // /search/label/<lab>
+    const mLabel = /^\/search\/label\/([^/?#]+)/.exec(path);
+    if(mLabel){ const lab=decodeURIComponent(mLabel[1]); openLabel(lab); return; }
+    // /p/<page>.html
+    if(/^\/p\//.test(path)){
+      const pg = pagesIndex.find(x=> x.url.replace(/^https?:\/\/[^/]+/,'') === path );
+      if(pg) openPage(pg); else fetchPages(p=>{ pagesIndex=p; const hit=p.find(x=>x.url.replace(/^https?:\/\/[^/]+/,'')===path); if(hit) openPage(hit); });
+      return;
+    }
+    // /YYYY/MM/slug.html → post
+    if(/^\/\d{4}\/\d{2}\//.test(path)){
+      const hit = postsIndex.find(x=> x.url.replace(/^https?:\/\/[^/]+/,'') === path );
+      if(hit) openPost(hit);
+      else {
+        // fallback: tampilkan feed (supaya tetap ada konten)
+        renderFeed(postsIndex.slice(0,20));
+      }
+      return;
+    }
+    // hash fallback (#/post/id)
+    const mHash = /#\/post\/(\d+)/.exec(hash);
+    if(mHash){ renderReaderById(mHash[1]); return; }
+    // default → Home boot
+    renderHome();
+  }
+
+  /* ===== Home boot (sapaan + popular + featured + penutup) ===== */
+  function renderHome(){
+    room.innerHTML='';
+    addBubble('Selamat datang di Gaga 👋','info','system');
+
+    // Popular: pakai label 'Popular' jika ada, fallback 4 pos terbaru
+    const popular = postsIndex.filter(p=> (p.labels||[]).includes('Popular')).slice(0,4);
+    renderFeed(popular.length?popular:postsIndex.slice(0,4),'Popular Post');
+
+    // Featured: label 'Featured' jika ada, fallback 1 pos terbaru
+    const featured = postsIndex.filter(p=> (p.labels||[]).includes('Featured')).slice(0,1);
+    if((featured.length?featured:postsIndex.slice(0,1)).length){
+      const hr=document.createElement('div'); hr.style.height='4px';
+      feed.appendChild(hr);
+      renderFeed(featured.length?featured:postsIndex.slice(0,1),'Featured Post');
+    }
+
+    addBubble('Buka label di kiri atau Dockbar (Ctrl+,) untuk mengatur tampilan.','success','system');
+    pushURL('/'); // tampilkan root
+  }
 
   /* ===== Events ===== */
   room.addEventListener('scroll', ()=>{ autoStickBottom = nearBottom(); updateSmart(); }, {passive:true});
@@ -451,14 +531,12 @@
     // Pages
     fetchPages(pgs=>{ pagesIndex=pgs; buildPagesList(pgs); });
 
-    // Posts summary → Feed + Labels
-    fetchPostsSummary({max:120}, list=>{
+    // Posts summary → Index + Labels
+    fetchPostsSummary({max:300}, list=>{
       postsIndex=list.slice();
-      renderFeed(list.slice(0,20));
       buildLabelsDropdown(list);
-      // routing awal
-      const m = /#\/post\/(\d+)/.exec(location.hash);
-      if(m) renderReaderById(m[1]);
+      // Sinkronkan dengan URL saat ini (SPA feel dengan permalink)
+      handleLocation();
     });
 
     // Smart scroll vis
@@ -469,5 +547,7 @@
     applyPushLayout();
     setTimeout(measureChatbar, 300);
   });
+
+  window.addEventListener('popstate', handleLocation);
 
 })();
