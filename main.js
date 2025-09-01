@@ -1,4 +1,3 @@
-<script>
 /*! Gaga Main v1 — SPA-feel Blogger (pushState, JSONP feed, label 2-level, pages, prefetch, focus-trap, smart-scroll) */
 (() => {
   'use strict';
@@ -445,4 +444,3 @@
   })();
 
 })();
-</script>
