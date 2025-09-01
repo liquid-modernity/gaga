@@ -204,3 +204,30 @@ body[data-bubble="wrap"] .bubble{display:block;max-width:65ch}
 }
 
 @media (prefers-reduced-motion: reduce){ *{animation:none !important;transition:none !important} }
+
+/* === Desktop grid fix: cegah center mengecil 1 huruf === */
+#shell.layout{
+  grid-template-columns: minmax(0,var(--sb-left)) minmax(0,1fr) minmax(0,var(--sb-right));
+}
+
+/* === SidebarLeft accordion “section” style sesuai mock === */
+.label-item{padding:0}
+.label-item summary{
+  padding:8px 10px;border-radius:10px;border:1px solid var(--border-muted);
+  background:var(--bg-elevated);margin-bottom:6px;
+}
+.label-item[open] summary{box-shadow:0 0 0 2px color-mix(in oklab,var(--accent),transparent 80%) inset}
+.label-item .acc .page-item{
+  width:100%; text-align:left; border-radius:8px; border:1px solid var(--border-muted);
+  background:var(--bg-elevated); padding:8px 10px; margin:6px 0; display:grid; grid-template-columns:auto 1fr; gap:8px;
+}
+
+/* === Pages list jadi tombol (SPA, no reload) === */
+.page-list .page-item{
+  width:100%; text-align:left; border:1px solid var(--border-muted); background:var(--bg-elevated);
+  border-radius:10px; padding:8px 10px;
+}
+
+/* === Permalink hover warna magenta yang kontras === */
+a:hover, .page-item:hover, .post-link:hover { color: var(--accent); }
+
