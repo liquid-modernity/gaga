@@ -184,4 +184,44 @@
   }
   
   @media (prefers-reduced-motion: reduce){ *{animation:none !important;transition:none !important} }
+
+/* ==== Fix micro-viewport & card layout ==== */
+.postcard { grid-template-columns: 120px 1fr; }
+.postcard .body { min-width: 0; }                 /* biar teks boleh mengecil */
+.postcard .title,
+.postcard .excerpt { overflow-wrap:anywhere; word-break:break-word; }
+
+/* tombol aksi rapi & tap target minimal */
+.iconbtn { min-height: 44px; min-width: 44px; }
+.postcard .actions { flex-wrap: wrap; gap: 8px; justify-content: flex-start; }
+.reader-actions { flex-wrap: wrap; gap: 8px; }
+
+/* container-query lebih agresif untuk device sempit */
+@container (max-width: 560px) {
+  .postcard { grid-template-columns: 1fr; }
+  .postcard .thumb { aspect-ratio: 16/9; }
+  .postcard .actions .iconbtn span { display: none; } /* sembunyikan teks tombol */
+  .postcard .actions .iconbtn { padding: 8px; }
+}
+@container (max-width: 360px) {
+  .postcard { border-radius: 16px; }
+}
+
+/* ==== Hindari chatbar menimpa konten (feed & room) ==== */
+.feed { padding-bottom: calc(var(--chatbar-h) + 24px); }
+#roomchat { scroll-padding-bottom: calc(var(--chatbar-h) + 16px); }
+
+/* ==== Title & meta agar tidak “ngegaris” saat sempit ==== */
+.reader-meta, .postcard .meta { row-gap: 8px; column-gap: 16px; }
+
+/* ==== SidebarRight force width & entrance ==== */
+#sidebarRight { right: 0; left: auto; will-change: transform; }
+.sidebar.is-open { transform: translateX(0) !important; }
+
+/* ==== iPhone SE & cover fold optim: sedikit kompres gap ==== */
+@media (max-width: 380px) {
+  :root { --gap: 8px; --center-pad: 12px; }
+  .chat-form { gap: 8px; }
+}
+
   
