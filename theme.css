@@ -1,271 +1,160 @@
-/* ================================
-   Gaga Frame — theme.css (V1)
-   Fokus: token, grid stabil 3 kolom, akses dasar,
-   anti-CLS, tanpa scroll horizontal.
-==================================*/
+/* =========================================================
+   Gaga Theme — FRAME v1 (default: LIGHT)
+   - Reset + tokens
+   - Layout 3 kolom (sidebars tampak di tahap kerangka)
+   - Dockbar responsive (auto-fit)
+   - Container queries utk label tombol aksi
+   - Anti-CLS: aspect-ratio utils lengkap
+   - Aksesibilitas & polish PSI
+   ========================================================= */
 
-/* ===== Tokens */
+/* ---------- Reset & utilities ---------- */
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+[hidden]{display:none!important}
+img,video{max-width:100%;height:auto;display:block}
+button,input,select{font:inherit;color:inherit}
+a{text-decoration:none;color:inherit}
+a:hover{color:var(--accent)}
+.sr-only{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+:where(a,button,[role="button"],input):focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:8px}
+
+/* ---------- Tokens (default = LIGHT) ---------- */
 :root{
-  /* grid */
-  --w-left:288px;
-  --w-right:336px;
-  --center-max:960px;
-  --center-pad:16px;
+  /* warna dasar */
+  --bg:#FFFFFF; --elev:#FFFFFF; --text:#1B1F29; --muted:#555; --border:#E5E5E5;
+  --accent:#D81B60; --focus:#D81B60;
 
-  /* spacing & radius */
+  /* spacing */
   --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px;
-  --r-8:8px; --r-10:10px; --r-12:12px; --r-16:16px; --r-18:18px; --r-pill:999px;
 
-  /* timings & z */
-  --t-fast:140ms; --t-overlay:220ms;
-  --z-side:1300; --z-dock:1400; --z-overlay:1250; --z-header:1500;
+  /* layout */
+  --left-w:280px; --right-w:280px;
+  --center-max:1100px; --center-pad:16px;
 
-  /* chip/chat sizes */
-  --chip:48px; --gap:10px; --input-pad-y:10px; --chatbar-h:64px;
-
-  /* typography */
-  --ts:1;
-  --fz-base:calc(16px*var(--ts));
-  --lh-base:1.65;
-  --fz-small:calc(14px*var(--ts));
-  --lh-small:1.55;
-
-  /* brand & status */
-  --accent:#D81B60; --info:#2F80ED; --success:#27AE60; --warn:#E2B93B; --error:#E53935;
+  /* ui */
+  --chatbar-h:64px; --safe-b:env(safe-area-inset-bottom,0px);
 }
 
-/* density toggle (future-proof) */
-body[data-density="comfortable"]{ --chip:48px; --gap:10px; --input-pad-y:10px }
-body[data-density="compact"]    { --chip:44px; --gap:8px;  --input-pad-y:8px  }
-
-/* ===== Themes (default: light) */
-body[data-theme="light"]{
-  --bg:#FFFFFF; --elev:#F6F7F9; --text:#1B1F29; --muted:#4A5260; --border:#DCE1EA;
-  --shadow:0 6px 24px rgba(0,0,0,.08);
-  color:var(--text); background:var(--bg);
-}
+/* Tema Dark */
 body[data-theme="dark"]{
   --bg:#0B0E13; --elev:#141923; --text:#E7EAF0; --muted:#B5BAC6; --border:#2A3040;
-  --shadow:0 6px 24px rgba(0,0,0,.25);
-  color:var(--text); background:var(--bg);
 }
-/* Glass (panel-only; tidak diterapkan ke sidebar) */
+/* Tema Liquid-Glass (panel translucent; sidebar tetap solid) */
 body[data-theme="glass"]{
-  --bg:#0B0E13; --elev:color-mix(in oklab,#141923 88%, transparent);
-  --text:#E7EAF0; --muted:#B5BAC6; --border:color-mix(in oklab,#E7EAF0 40%, transparent);
-  color:var(--text); background:var(--bg);
-}
-@supports not ((backdrop-filter: blur(0)) or (-webkit-backdrop-filter: blur(0))){
-  body[data-theme="glass"]{ --elev:#141923; --border:#2A3040; }
+  --bg:#0B0E13;
+  --elev:color-mix(in oklab,#141923 88%, transparent);
+  --text:#E7EAF0; --muted:#B5BAC6;
+  --border:color-mix(in oklab,#E7EAF0 40%, transparent);
 }
 
-/* ===== Resets */
-*{box-sizing:border-box}
-html,body,#app,#shell{height:100%}
-html,body{overflow:hidden} /* hanya center yang scroll */
+/* Terapkan token ke kanvas & komponen umum */
 body{
-  margin:0;
-  font:400 var(--fz-base)/var(--lh-base) system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Helvetica Neue,Arial,sans-serif;
-  letter-spacing:-0.005em;
-}
-img{display:block;max-width:100%;height:auto}
-button,input{font:inherit;color:inherit}
-button{cursor:pointer;background:none;border:0}
-
-/* focus ring konsisten */
-:where(a,button,[role="button"],input):focus-visible{
-  outline:2px solid var(--accent);
-  outline-offset:2px;border-radius:10px;
+  overflow-x:hidden;line-height:1.6;
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
+  -webkit-text-size-adjust:100%;text-rendering:optimizeLegibility;font-kerning:normal;
+  background:var(--bg);color:var(--text);
 }
 
-/* sr-only sudah ada di <b:skin>; ini penjaga kalau loader tertunda */
-.sr-only{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-
-/* hover magenta */
-a:hover{color:var(--accent)}
-.iconbtn:hover,.btn-icon:hover,.tile:hover,.page-item:hover{
-  border-color:var(--accent); color:var(--accent);
-  box-shadow:0 0 0 2px color-mix(in oklab,var(--accent),transparent 85%) inset;
-}
-
-/* thin scrollbar (desktop) */
-*{scrollbar-width:thin; scrollbar-color: color-mix(in oklab,var(--text) 40%,transparent) transparent}
-::-webkit-scrollbar{width:8px;height:8px}
-::-webkit-scrollbar-thumb{background-color:color-mix(in oklab,var(--text) 40%,transparent);border-radius:8px}
-@media (hover:hover){
-  ::-webkit-scrollbar-thumb:hover{background-color:color-mix(in oklab,var(--text) 60%,transparent)}
-}
-
-/* ===== Layout 3 kolom (push) — sidebars tampak */
-#shell.layout{
-  display:grid;
-  grid-template-columns: var(--w-left) minmax(0,1fr) var(--w-right);
-  gap:var(--gap);
-  align-items:start;
-  min-height:100%;
-}
-
-/* sidebars selalu tampak; sticky header/footer; konten scroll di sb-mid */
+/* ---------- Layout dasar (uji: sidebars tampak) ---------- */
+#shell{display:flex;gap:var(--sp-4);align-items:flex-start}
 .sidebar{
-  position:sticky; top:0; height:100dvh; display:flex; flex-direction:column;
-  background:var(--elev); border:1px solid var(--border); border-radius:0; z-index:var(--z-side);
+  width:var(--left-w);background:var(--elev);
+  border:1px solid var(--border);border-radius:12px;
+  display:flex;flex-direction:column;min-height:0;
 }
-.sb-top,.sb-bottom{padding:var(--sp-4); position:sticky; background:inherit}
-.sb-top{top:0; border-bottom:1px solid var(--border)}
-.sb-bottom{bottom:0; border-top:1px solid var(--border)}
-.sb-mid{flex:1 1 auto; min-height:0; overflow:auto; padding:var(--sp-4)}
+#sidebarRight{width:var(--right-w)}
+.sb-top,.sb-mid,.sb-bottom{padding-block:var(--sp-4);padding-inline:var(--sp-4)}
+.sb-mid{flex:1 1 auto;min-height:0;overflow:auto}
+.sb-bottom{position:sticky;bottom:0;background:var(--elev);border-top:1px solid var(--border)}
 
-/* center scroll container */
-.center{position:relative; display:flex; flex-direction:column; min-width:0; height:100dvh; overflow:auto; -webkit-overflow-scrolling:touch}
-.center-wrap{width:min(100%,calc(var(--center-max) + 2*var(--center-pad))); margin-inline:auto; padding:var(--sp-4); display:flex; flex-direction:column; gap:var(--gap)}
+.center{min-width:0;flex:1}
+.center-wrap{
+  width:min(100%,var(--center-max));max-width:100%;
+  margin-inline:auto;
+  padding-inline:var(--center-pad);
+  padding-top:var(--sp-4);
+  /* +24px agar tidak “nyundul” chatbar */
+  padding-bottom:calc(var(--chatbar-h) + var(--safe-b) + 24px);
+}
 
-/* ===== Components: text helpers */
-.eyebrow{font-size:calc(.86*var(--fz-base)); letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin:0 0 var(--sp-2)}
-.muted{color:var(--muted); opacity:.9}
+.eyebrow{font-size:.92em;font-weight:700;margin:var(--sp-3) 0 var(--sp-2)}
+.muted{color:var(--muted)}
 
-/* ===== Sidebar: profile + lists */
-.profile-card{display:flex; gap:var(--sp-3); align-items:center}
-.avatar{width:72px;height:72px;border-radius:50%;border:1px solid var(--border);background:#0001}
+/* ---------- Komponen dasar ---------- */
+.tile,.btn,.btn-icon,.iconbtn,.page-item{
+  display:inline-flex;align-items:center;gap:8px;cursor:pointer;
+  padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:var(--elev);
+  min-height:44px;min-width:44px
+}
+.card,.bubble,.postcard,.readercard,.similarcard{
+  background:var(--elev);border:1px solid var(--border);border-radius:12px;
+  padding:var(--sp-4);margin:var(--sp-3) 0
+}
+.thumb{border:1px solid var(--border);border-radius:10px;overflow:hidden;margin:var(--sp-2) 0}
+.meta{color:var(--muted);font-size:.92em;display:flex;gap:var(--sp-3);flex-wrap:wrap;align-items:center}
+.actions{display:flex;gap:var(--sp-2);flex-wrap:wrap;margin-top:var(--sp-2)}
+.chatbar{padding:var(--sp-3);background:var(--elev);border:1px solid var(--border);border-radius:12px;margin:var(--sp-3) 0}
+.chat-form{display:flex;gap:var(--sp-2)}
+.chat-form input{flex:1;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--elev)}
 
-.label-list{display:grid; gap:6px}
-.label-item{border:1px solid var(--border); border-radius:10px; background:var(--elev); padding:0}
+/* ---------- Dockbar (responsive auto-fit) ---------- */
+.dock{border:1px solid var(--border);border-radius:12px;background:var(--elev);padding:var(--sp-4);margin-bottom:var(--sp-4)}
+.dock-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--sp-3)}
+.dock-title{display:flex;align-items:center;gap:8px}
+.dock .dock-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(180px,1fr));
+  gap:var(--sp-3);
+  grid-auto-flow:dense;
+}
+fieldset.tile{border:1px solid var(--border);border-radius:10px;margin:0;padding:8px 10px;display:inline-flex;align-items:center;gap:8px}
+fieldset.tile legend{padding:0;margin:0}
+.tile span{white-space:nowrap}
+
+/* ---------- Label 2-level ---------- */
+.label-list{display:grid;gap:var(--sp-2)}
+.label-item{border:1px solid var(--border);border-radius:10px;background:var(--elev);overflow:hidden}
 .label-item summary{
-  list-style:none; display:grid; grid-template-columns:auto 1fr auto auto; align-items:center; gap:8px;
-  padding:8px 10px; border-radius:10px;
+  display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;gap:var(--sp-2);
+  padding:8px 10px;list-style:none;cursor:pointer;user-select:none
 }
 .label-item summary::-webkit-details-marker{display:none}
-.label-item .acc{display:block; padding:0 10px 8px}
-.page-list{display:grid; gap:8px; margin-top:8px}
-.page-item{display:grid; grid-template-columns:auto 1fr; gap:8px; align-items:center;
-  border:1px solid var(--border); border-radius:10px; padding:8px 10px; background:var(--elev)}
+.label-item .label-name{font-weight:700}
+.label-item .count{color:var(--muted);font-size:.92em}
+.label-item .chev{opacity:.8;margin-left:var(--sp-2);transition:transform .2s ease}
+.label-item[open] .chev{transform:rotate(180deg)}
+.label-item[open] summary{box-shadow:0 0 0 2px color-mix(in oklab,var(--accent),transparent 80%) inset;border-radius:10px}
+.label-item .acc{display:grid;gap:var(--sp-2);padding:var(--sp-2);border-top:1px solid var(--border)}
+.label-item .acc li{list-style:none}
+.label-item .acc .page-item{width:100%;text-align:left;display:grid;grid-template-columns:auto 1fr;gap:var(--sp-2)}
 
-/* socials */
-.socials{display:flex; gap:8px; flex-wrap:wrap}
-.socials a{display:inline-flex; align-items:center; justify-content:center; gap:6px;
-  border:1px solid var(--border); border-radius:10px; padding:8px 10px}
+/* ---------- SmartScroll ---------- */
+#smartScroll{position:sticky;bottom:calc(var(--chatbar-h) + 12px);margin-left:auto}
+#smartScroll[hidden]{display:none}
 
-/* ===== Stream & cards */
-.feed{display:grid; gap:16px}
-.room{display:grid; gap:var(--sp-4);}
+/* ---------- Guard overflow & wrapping ---------- */
+.center,.center-wrap,.room,.feed,.dock{min-width:0;max-width:100%}
+.postcard h3,.readercard h2,.readercard .body{overflow-wrap:anywhere}
+.media{display:block;max-width:100%;height:auto;object-fit:cover}
+.readercard .media{object-fit:contain}
 
-/* bubble */
-.bubble{position:relative; display:inline-block; padding:12px 14px; border-radius:18px;
-  max-width:min(85%,65ch); background:var(--elev); border:1px solid var(--border); box-shadow:0 1px 0 rgba(0,0,0,.06)}
-.bubble[data-role="system"]{margin-right:auto}
-.bubble[data-role="user"]{margin-left:auto; background:color-mix(in oklab,var(--success),var(--elev) 90%)}
-
-/* postcard */
-.postcard{display:grid; grid-template-columns:160px 1fr; gap:12px; align-items:center;
-  background:var(--elev); border:1px solid var(--border); border-radius:18px; padding:12px}
-.postcard .thumb{border-radius:12px; overflow:hidden; border:1px solid var(--border); background:#0001}
-.postcard .media{width:100%; height:100%; object-fit:cover}
-.postcard h3{margin:0}
-.postcard .meta{margin:.25rem 0; color:var(--muted); font-size:var(--fz-small)}
-.postcard .actions{display:flex; flex-wrap:wrap; gap:8px}
-
-/* readercard */
-.readercard{background:var(--elev); border:1px solid var(--border); border-radius:18px; overflow:hidden}
-.readercard header{padding:16px 16px 8px}
-.readercard .meta{color:var(--muted); font-size:var(--fz-small)}
-.readercard .body{padding:0 16px 16px}
-.readercard .thumb{border-radius:12px; overflow:hidden; border:1px solid var(--border); background:#0001}
-.readercard .media{width:100%; height:100%; object-fit:cover}
-.readercard .actions{display:flex; gap:8px; padding:10px 16px; border-top:1px solid var(--border); background:color-mix(in oklab,var(--elev),#fff 2%)}
-
-/* similar */
-.similar{padding:12px 16px 16px}
-.similar .similarcard{border:1px solid var(--border); border-radius:12px; padding:10px; margin:8px 0; background:var(--elev)}
-
-/* buttons */
-.iconbtn,.btn-icon{
-  display:inline-flex; align-items:center; gap:6px;
-  border:1px solid var(--border); background:var(--elev); border-radius:10px;
-  padding:8px 10px; min-height:44px; min-width:44px;
-}
-.btn{background:color-mix(in oklab,var(--accent),#fff 92%); border-color:color-mix(in oklab,var(--accent),#000 10%)}
-.iconbtn svg,.btn-icon svg{display:block}
-
-/* chatbar */
-.chatbar{position:sticky; bottom:0; left:0; right:0; padding:8px 0 calc(8px); background:transparent; z-index:var(--z-header)}
-.chat-form{display:flex; align-items:center; gap:var(--gap); background:var(--elev);
-  border:1px solid var(--border); border-radius:24px; padding:6px 8px; box-shadow:0 -2px 10px rgba(0,0,0,.06)}
-.chat-form input{flex:1; min-width:8ch; border:0; background:transparent; outline:none; padding-block:var(--input-pad-y); color:inherit}
-.chat-form input::placeholder{color:var(--muted); opacity:.85}
-
-/* dockbar (top-sheet “visual”, belum overlay) */
-.dock{border:1px solid var(--border); border-radius:16px; background:var(--elev); padding:12px}
-.dock .dock-head{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px}
-.dock .dock-title{display:inline-flex; align-items:center; gap:8px}
-.dock .dock-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:12px}
-.tile{display:flex; align-items:center; justify-content:center; gap:8px; padding:10px;
-  border:1px solid var(--border); border-radius:12px; background:var(--elev)}
-
-/* smartscroll */
-#smartScroll{
-  position:sticky; bottom:calc(var(--chatbar-h) + 12px);
-  margin-left:auto; z-index:5;
-}
-
-/* aspect-ratio utilities (anti-CLS) */
+/* Anti-CLS: aspect-ratio utilities */
 .ar-1-1{aspect-ratio:1/1}
 .ar-4-5{aspect-ratio:4/5}
 .ar-16-9{aspect-ratio:16/9}
 .ar-9-16{aspect-ratio:9/16}
 .ar-3-4{aspect-ratio:3/4}
 
-/* glass panels (panel-only; tidak dipakai di sidebar) */
-body[data-theme="glass"] .dock,
-body[data-theme="glass"] .chatbar,
-body[data-theme="glass"] .postcard,
-body[data-theme="glass"] .readercard,
-body[data-theme="glass"] .bubble{
-  -webkit-backdrop-filter: blur(12px) saturate(1.05);
-  backdrop-filter: blur(12px) saturate(1.05);
-  background: color-mix(in oklab, var(--elev) 100%, transparent);
-}
-@supports not ((backdrop-filter: blur(0)) or (-webkit-backdrop-filter: blur(0))){
-  body[data-theme="glass"] .dock,
-  body[data-theme="glass"] .chatbar,
-  body[data-theme="glass"] .postcard,
-  body[data-theme="glass"] .readercard,
-  body[data-theme="glass"] .bubble{
-    background: var(--elev);
+/* Paint skipping aman (per item) */
+@supports (content-visibility:auto){
+  .room > *{
+    content-visibility:auto;
+    contain-intrinsic-size:auto 560px; /* width auto, height simulasi */
   }
 }
 
-/* responsive fine-tunes */
-@container (max-width:560px){
-  .postcard .actions .iconbtn span,
-  .readercard .actions .iconbtn span{display:none}
-  .iconbtn{padding:8px}
-}
-@media (max-width:420px){
-  .postcard{grid-template-columns:1fr}
-}
-
-/* motion reduce */
-@media (prefers-reduced-motion: reduce){
-  *{animation:none!important; transition:none!important}
-}
-
-/* ===== FIX 1: Dockbar responsive */
-.dock{ width:100%; }
-.dock .dock-grid{
-  /* auto-fit: baris akan menyesuaikan, tidak mepet */
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  grid-auto-flow: dense;
-}
-.tile{ min-width:0; }                           /* biar bisa menyusut */
-.tile span{ white-space:nowrap; }               /* label pendek tetap 1 baris */
-.tile fieldset{ display:flex; gap:12px; border:0; padding:0; margin:0; }
-.tile label{ display:inline-flex; align-items:center; gap:6px; }
-
-/* Breakpoint tambahan utk ponsel mini */
-@media (max-width:360px){
-  .dock .dock-grid{ grid-template-columns: 1fr; }
-}
-
-/* ===== FIX 2: aktifkan container queries utk area aksi */
+/* ---------- Container Queries (label tombol aksi) ---------- */
 .postcard,
 .readercard .actions{ container-type:inline-size; }
 
@@ -276,9 +165,122 @@ body[data-theme="glass"] .bubble{
   .readercard .actions .iconbtn{ padding:8px; }
 }
 
-/* ===== FIX 3: ruang bawah cukup agar tidak “nyundul” chatbar */
-.center-wrap{ padding-bottom: calc(var(--chatbar-h) + 24px); }
+/* ---------- Responsif ---------- */
+/* Mobile stack (≤599px) */
+@media (max-width:599px){
+  #shell{flex-direction:column}
+  .sidebar{width:auto}
+  .dock .dock-grid{grid-template-columns:1fr} /* fallback eksplisit */
+}
 
-/* ===== FIX 4 (opsional): cegah tombol jadi 2 baris */
-.iconbtn span{ white-space:nowrap; }
+/* Medium: 2 kolom (600–1023px) */
+@media (min-width:600px) and (max-width:1023px){
+  #shell{
+    display:grid;
+    grid-template-columns: var(--left-w) 1fr;
+    grid-template-areas:
+      "left center"
+      "right right";
+    gap: var(--sp-4);
+  }
+  #sidebarLeft{ grid-area:left }
+  #centerbar  { grid-area:center }
+  #sidebarRight{ grid-area:right; width:auto }
+}
 
+/* Desktop: 3 kolom (≥1024px) */
+@media (min-width:1024px){
+  #shell{
+    display:grid;
+    grid-template-columns: var(--left-w) minmax(0,1fr) var(--right-w);
+    gap: var(--sp-4);
+  }
+}
+
+/* ---------- Print & motion ---------- */
+@media print{
+  .room > *{content-visibility:visible;contain-intrinsic-size:auto}
+  .sidebar,.dock,.chatbar{display:none}
+  body{background:#fff;color:#000}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ---------- Tema Glass: panel translucent saja (sidebar solid) ---------- */
+body[data-theme="glass"] .card,
+body[data-theme="glass"] .bubble,
+body[data-theme="glass"] .postcard,
+body[data-theme="glass"] .readercard,
+body[data-theme="glass"] .chatbar,
+body[data-theme="glass"] .dock{
+  -webkit-backdrop-filter: blur(12px) saturate(1.05);
+  backdrop-filter: blur(12px) saturate(1.05);
+  background: color-mix(in oklab, var(--elev) 100%, transparent);
+  border-color: color-mix(in oklab, var(--text) 30%, transparent);
+}
+body[data-theme="glass"] .sidebar{
+  -webkit-backdrop-filter:none!important; backdrop-filter:none!important;
+  background: var(--bg); border-color: var(--border);
+}
+@supports not ((-webkit-backdrop-filter: blur(0)) or (backdrop-filter: blur(0))){
+  body[data-theme="glass"] .card,
+  body[data-theme="glass"] .bubble,
+  body[data-theme="glass"] .postcard,
+  body[data-theme="glass"] .readercard,
+  body[data-theme="glass"] .chatbar,
+  body[data-theme="glass"] .dock{
+    background: var(--elev);
+    -webkit-backdrop-filter:none; backdrop-filter:none;
+  }
+}
+@media (prefers-contrast: more){
+  body[data-theme="glass"] .card,
+  body[data-theme="glass"] .bubble,
+  body[data-theme="glass"] .postcard,
+  body[data-theme="glass"] .readercard,
+  body[data-theme="glass"] .chatbar,
+  body[data-theme="glass"] .dock{
+    background: color-mix(in oklab, var(--bg) 12%, var(--elev));
+    border-color: color-mix(in oklab, var(--text) 45%, transparent);
+  }
+}
+
+/* ---------- Scrollbar tipis (aksesibel) ---------- */
+*{scrollbar-width:thin; scrollbar-color: color-mix(in oklab,var(--text) 40%, transparent) transparent}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background-color:color-mix(in oklab,var(--text) 40%, transparent);border-radius:8px}
+@media (hover:hover){
+  ::-webkit-scrollbar-thumb:hover{background-color:color-mix(in oklab,var(--text) 60%, transparent)}
+}
+
+/* ---------- Callout (status) ---------- */
+.callout{border-radius:16px;padding:12px 16px;max-width:72ch}
+.callout.info   {background:color-mix(in oklab,#2F80ED 10%, transparent); border:1px solid color-mix(in oklab,#2F80ED 40%, transparent)}
+.callout.success{background:color-mix(in oklab,#27AE60 10%, transparent); border:1px solid color-mix(in oklab,#27AE60 40%, transparent)}
+.callout.warn   {background:color-mix(in oklab,#E2B93B 10%, transparent); border:1px solid color-mix(in oklab,#E2B93B 40%, transparent)}
+.callout.error  {background:color-mix(in oklab,#E53935 10%, transparent); border:1px solid color-mix(in oklab,#E53935 40%, transparent)}
+.callout :where(h1,h2,h3,h4,h5,h6,p,li,code){color:var(--text)}
+
+/* ---------- Video/Iframe guard ---------- */
+.post-body .video-frame{
+  display:block;width:100%;max-width:900px;margin:1rem 0;
+  aspect-ratio:16/9;position:relative;background:#000;border-radius:8px;overflow:hidden
+}
+.post-body .video-frame > iframe,
+.post-body .video-frame > video{width:100%;height:100%;display:block}
+
+/* ---------- Table guard ---------- */
+.post-body .table-scroller{
+  overflow:auto;-webkit-overflow-scrolling:touch;max-width:100%;
+  border:1px solid #ddd;border-radius:8px;margin:1rem 0;padding:.25rem;outline:none
+}
+.post-body .table-scroller:focus{box-shadow:0 0 0 3px #3388ff55}
+.post-body table[role="table"], .post-body table{border-collapse:collapse;width:100%;min-width:640px}
+.post-body caption{ text-align:left;font-weight:600;padding:.5rem .25rem}
+.post-body th,.post-body td{border:1px solid #ddd;padding:.5rem .625rem;vertical-align:top}
+.post-body thead th{background:#fafafa;position:sticky;top:0;z-index:1}
+.post-body tbody tr:nth-child(even) td{background:#fcfcff}
+@media (prefers-reduced-motion: reduce){*{scroll-behavior:auto}}
+@media (prefers-contrast: more){
+  .post-body .table-scroller:focus{box-shadow:0 0 0 3px #0044ff}
+  .post-body thead th{background:#f0f0f0}
+}
