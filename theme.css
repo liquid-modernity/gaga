@@ -284,3 +284,87 @@ body[data-theme="glass"] .sidebar{
   .post-body .table-scroller:focus{box-shadow:0 0 0 3px #0044ff}
   .post-body thead th{background:#f0f0f0}
 }
+
+/* Dockbar (auto-fit, selalu responsif) */
+:where(.dock-grid){
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(180px,1fr)) !important;
+  gap:var(--sp-3);
+  grid-auto-flow:dense;
+}
+
+/* Wrap & ergonomi kontrol Dockbar */
+.dock .tile{flex-wrap:wrap; align-items:center}
+.dock .tile span{white-space:normal}
+.dock fieldset.tile{flex-wrap:wrap; gap:8px 12px}
+.dock fieldset.tile label{display:inline-flex; align-items:center; gap:6px}
+.dock .tile input[type="range"]{width:min(320px,100%)}
+
+/* Extra guard untuk jarak bawah center (menghormati safe-area) */
+@supports (padding: max(0px)) {
+  .center-wrap{
+    padding-bottom:max(calc(var(--chatbar-h) + var(--safe-b) + 24px), 92px);
+  }
+}
+
+
+
+/* ====== WIDTH TOKENS (boleh kamu sesuaikan) ====== */
+:root{
+  --center-max: 1200px;             /* lebar baca nyaman */
+  --center-pad: 16px;
+  --gap-x: var(--sp-4);
+  --left-w:  clamp(220px, 19vw, 280px);
+  --right-w: clamp(260px, 21vw, 320px);
+}
+
+/* ====== LAYOUT: 2 kolom di 1024–1599px ======
+   Right turun ke bawah (full-width) agar Center lega */
+@media (min-width:1024px) and (max-width:1599px){
+  #shell{
+    display:grid;
+    grid-template-columns: var(--left-w) minmax(0,1fr);
+    grid-template-areas:
+      "left center"
+      "right right";
+    gap: var(--gap-x);
+  }
+  #sidebarLeft  { grid-area:left }
+  #centerbar    { grid-area:center }
+  #sidebarRight { grid-area:right; width:auto }
+}
+
+/* ====== LAYOUT: 3 kolom hanya di ≥1600px (benar2 lebar) ====== */
+@media (min-width:1600px){
+  #shell{
+    display:grid;
+    grid-template-columns: var(--left-w) minmax(0,1fr) var(--right-w);
+    gap: var(--gap-x);
+  }
+  /* center boleh sedikit lebih lebar di layar gede */
+  .center-wrap{ --center-max: 1280px; }
+}
+
+/* ====== CENTER WRAP (tanpa overflow horizontal) ====== */
+.center{ min-width:0 }
+.center-wrap{
+  width:min(100%, var(--center-max));
+  max-width:100%;
+  margin-inline:auto;
+  padding-inline:var(--center-pad);
+}
+
+/* guard jarak bawah terhadap chatbar + safe-area */
+@supports (padding: max(0px)) {
+  .center-wrap{
+    padding-bottom:max(calc(var(--chatbar-h) + var(--safe-b) + 24px), 92px);
+  }
+}
+/* (opsional) tetap 3 kolom ≥1280, tapi “ramdiet” sidebar */
+@media (min-width:1280px){
+  :root{
+    --left-w: 240px;
+    --right-w: 260px;
+    --gap-x: 16px;     /* kecilkan gap */
+  }
+}
