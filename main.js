@@ -1,446 +1,594 @@
-/*! Gaga Main v1 — SPA-feel Blogger (pushState, JSONP feed, label 2-level, pages, prefetch, focus-trap, smart-scroll) */
-(() => {
+/*!
+ * GAGA main.js — v1
+ * SPA-feel dasar: router, JSONP fetch, render Home/Label/Post, prefetch, copy/share, Sidebarright meta, SmartScroll
+ * Tidak mengubah XML. Semua selector sesuai kerangka.
+ */
+(function(){
   'use strict';
 
-  /* ========= Config ========= */
-  const BLOG = (window.GAGA_CONFIG && window.GAGA_CONFIG.blogBase) || document.body.getAttribute('data-blog') || location.origin;
-  const POP  = +(document.body.dataset.popcount || 4);
-  const FEAT = +(document.body.dataset.featcount || 2);
-  const FEED_POSTS = '/feeds/posts/summary';
-  const FEED_PAGES = '/feeds/pages/summary';
-  history.scrollRestoration = 'manual';
+  /* ========= Priority 0: Safe helpers ========= */
+  const qs  = (sel,el=document)=>el.querySelector(sel);
+  const qsa = (sel,el=document)=>Array.from(el.querySelectorAll(sel));
+  const on  = (el,ev,fn,opt)=>el.addEventListener(ev,fn,opt||{passive:true});
 
-  /* ========= Helpers ========= */
-  const $  = (s, r=document) => r.querySelector(s);
-  const $$ = (s, r=document) => [...r.querySelectorAll(s)];
-  const on = (el,ev,fn,opt)=> el && el.addEventListener(ev,fn,opt);
-  const esc= s=>(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
-  const safeURL = u => (u||'').replace(/javascript:/gi,'').trim();
-  const sleep = ms => new Promise(r=>setTimeout(r,ms));
+  const state = {
+    blogBase: document.body.dataset.blog || location.origin,
+    popCount: +(document.body.dataset.popcount||4),
+    featCount:+(document.body.dataset.featcount||2),
+    cache: new Map(),            // in-memory
+    lsKey: 'gaga:cache:v1',
+    routeScroll: new Map(),      // per-URL scrollY
+  };
 
-  /* ========= URL tools ========= */
-  function normalizeLink(href){
-    try{ const u = new URL(href, BLOG);
-      return u.origin===location.origin ? (u.pathname + u.search + u.hash) : u.href;
-    }catch{ return href; }
-  }
-  function isPermalinkURL(href){
+  // restore LS cache (best-effort)
+  try{
+    const raw = localStorage.getItem(state.lsKey);
+    if(raw){ state.cache = new Map(JSON.parse(raw)); }
+  }catch(e){}
+
+  function saveCache(){
     try{
-      const u = new URL(href, BLOG);
-      const p = u.pathname;
-      if (/^\/\d{4}\/\d{2}\/.+\.html$/i.test(p)) return {type:'post', href:u.pathname+u.search};
-      if (/^\/p\/.+\.html$/i.test(p))         return {type:'page', href:u.pathname+u.search};
-      if (/^\/search\/label\/.+/i.test(p))    return {type:'label',href:u.pathname+u.search};
-      if (p==='/' || p==='/index.html')       return {type:'home', href:'/'};
-      return null;
-    }catch{ return null; }
+      const arr = Array.from(state.cache.entries());
+      localStorage.setItem(state.lsKey, JSON.stringify(arr));
+    }catch(e){}
   }
 
-  /* ========= Sanitizer ========= */
-  function extractContentHTML(raw){
-    const doc = new DOMParser().parseFromString(`<div>${raw||''}</div>`,'text/html');
-    const allowed = new Set(['A','P','H1','H2','H3','H4','H5','H6','BLOCKQUOTE','UL','OL','LI','STRONG','EM','CODE','PRE','IMG','FIGURE','FIGCAPTION','TABLE','THEAD','TBODY','TR','TH','TD','HR','BR','SPAN','DIV','IFRAME','VIDEO','SOURCE']);
-    doc.querySelectorAll('script,style,noscript,link,meta').forEach(n=>n.remove());
-    doc.querySelectorAll('*').forEach(el=>{
-      if (!allowed.has(el.tagName)){ el.replaceWith(...el.childNodes); return; }
-      [...el.attributes].forEach(a=>{
-        const n=a.name.toLowerCase(), v=a.value;
-        if (n.startsWith('on')) el.removeAttribute(a.name);
-        if ((n==='href'||n==='src') && /^javascript:/i.test(v)) el.removeAttribute(a.name);
-      });
-      if (el.tagName==='IMG'){
-        el.loading='lazy'; el.decoding='async';
-        if (!el.closest('.ar')){ const w=doc.createElement('div'); w.className='ar ar-16-9'; el.replaceWith(w); w.append(el); }
-      }
-      if (el.tagName==='IFRAME' || el.tagName==='VIDEO'){
-        if (!el.closest('.ar')){ const w=doc.createElement('div'); w.className='ar ar-16-9'; el.replaceWith(w); w.append(el); }
-        if (el.tagName==='VIDEO'){ el.playsInline = true; el.setAttribute('controls',''); }
-      }
-    });
-    return doc.body.firstElementChild.innerHTML;
+  /* ========= Priority 1: URL helpers (normalize & detect) ========= */
+  function normalizeLink(href){
+    try{
+      const u = new URL(href, state.blogBase);
+      // strip tracking params
+      ['utm_source','utm_medium','utm_campaign','m','spref'].forEach(k=>u.searchParams.delete(k));
+      // Blogger mobile param m=1
+      if(u.searchParams.has('m')) u.searchParams.delete('m');
+      u.hash = ''; // SPA-feel tak pakai hash
+      return u.toString();
+    }catch(e){
+      return href;
+    }
   }
 
-  /* ========= Feed (JSON & JSONP) ========= */
-  const mem = new Map(); const TTL = 3*60*1000; // 3 menit
-  function cget(k){ const it=mem.get(k); return it && (Date.now()-it.t<TTL) ? it.v : null; }
-  function cset(k,v){ mem.set(k,{t:Date.now(),v}); }
+  function isSameOrigin(href){
+    try{ return new URL(href, location.href).origin === location.origin; }catch(e){ return false; }
+  }
 
-  async function fetchJSON(u){ const r=await fetch(u); return r.json(); }
-  function fetchJSONP(u, cb='callback'){
-    return new Promise((res,rej)=>{
-      const id='cb'+Math.random().toString(36).slice(2);
-      const s=document.createElement('script');
-      const sep = u.includes('?')?'&':'?';
-      window[id]=d=>{ res(d); cleanup(); };
-      s.src = `${u}${sep}${cb}=${id}`; s.onerror=e=>{ rej(e); cleanup(); };
+  // Detect Blogger routes: post (/YYYY/MM/slug.html), page (/p/*.html), label (/search/label/Label)
+  function detectRoute(urlStr){
+    const u = new URL(urlStr);
+    const p = u.pathname;
+    if(p === '/' || p === '/index.html') return {type:'home'};
+    if(/^\/\d{4}\/\d{2}\/.+\.html$/i.test(p)) return {type:'post', url:u.toString()};
+    if(/^\/p\/.+\.html$/i.test(p)) return {type:'page', url:u.toString()};
+    if(/^\/search\/label\/.+/i.test(p)) return {type:'label', label: decodeURIComponent(p.split('/search/label/')[1]||'').replace(/\/+$/,'')};
+    return {type:'external', url:u.toString()};
+  }
+
+  /* ========= Priority 2: JSONP fetchers ========= */
+  // JSONP helper
+  function jsonp(url){
+    return new Promise((resolve,reject)=>{
+      const cb = 'gaga_cb_' + Math.random().toString(36).slice(2);
+      const s = document.createElement('script');
+      const timeout = setTimeout(()=>{ cleanup(); reject(new Error('JSONP timeout')); }, 12000);
+      function cleanup(){ try{ delete window[cb]; s.remove(); clearTimeout(timeout);}catch(e){} }
+      window[cb] = (data)=>{ cleanup(); resolve(data); };
+      s.src = url + (url.includes('?')?'&':'?') + 'callback=' + cb;
+      s.onerror = ()=>{ cleanup(); reject(new Error('JSONP error')); };
       document.head.appendChild(s);
-      function cleanup(){ delete window[id]; s.remove(); }
     });
   }
+
+  // Cache wrapper (cache by URL)
+  async function fetchJSONP(url){
+    const key = 'J:'+url;
+    if(state.cache.has(key)) return state.cache.get(key);
+    const data = await jsonp(url);
+    state.cache.set(key, data);
+    saveCache();
+    return data;
+  }
+
+  // Blogger feed builders
+  const FEED = {
+    // summary recent or by label
+    postsSummary({label,max=10,start=1}={}){
+      const base = `${state.blogBase.replace(/\/$/,'')}/feeds/posts/summary`;
+      const params = [
+        'alt=json-in-script',
+        'orderby=published',
+        `max-results=${max}`,
+        `start-index=${start}`
+      ];
+      if(label) params.push('category=' + encodeURIComponent(label));
+      return `${base}?${params.join('&')}`;
+    },
+    // full content by query (best-effort)
+    searchFull({q,max=5}){
+      const base = `${state.blogBase.replace(/\/$/,'')}/feeds/posts/default`;
+      const params = ['alt=json-in-script', 'orderby=published', `q=${encodeURIComponent(q)}`, `max-results=${max}`];
+      return `${base}?${params.join('&')}`;
+    },
+    // pages summary
+    pagesSummary({max=10}={}){
+      const base = `${state.blogBase.replace(/\/$/,'')}/feeds/pages/summary`;
+      const params = ['alt=json-in-script', `max-results=${max}`];
+      return `${base}?${params.join('&')}`;
+    }
+  };
+
+  // Map feed entry → item
   function mapEntry(e){
-    const permalink = e.link?.find(l=>l.rel==='alternate')?.href || '';
-    const summary = (e.summary?.$t||'').replace(/<[^>]+>/g,'').trim();
-    let thumb = e.media$thumbnail?.url || '';
-    if (!thumb){ const html=e.content?.$t||e.summary?.$t||''; const m=html.match(/<img[^>]+src=["']([^"']+)["']/i); thumb = m?m[1]:''; }
-    return {
-      id: e.id?.$t || permalink,
-      title: e.title?.$t || '',
-      permalink, summary, thumb,
-      labels: (e.category||[]).map(c=>c.term).filter(Boolean),
-      author: e.author?.[0]?.name?.$t || '',
-      published: e.published?.$t || '', updated: e.updated?.$t || '',
-      content: e.content?.$t || ''
-    };
-  }
-  async function getFeed(opt={}){
-    const u = new URL(FEED_POSTS, BLOG);
-    u.searchParams.set('alt','json');
-    u.searchParams.set('max-results', opt.maxResults || 10);
-    if (opt.startIndex) u.searchParams.set('start-index', opt.startIndex);
-    if (opt.label) u.searchParams.set('category', opt.label);
-    const key=u.href; let data=cget(key);
-    if (!data){ try{ data=await fetchJSON(u.href); } catch{ data=await fetchJSONP(u.href); } cset(key,data); }
-    const entries = (data?.feed?.entry||[]).map(mapEntry);
-    const total = +(data?.feed?.openSearch$totalResults?.$t || entries.length);
-    return { entries, total };
-  }
-  async function getPages(){
-    const u = new URL(FEED_PAGES, BLOG); u.searchParams.set('alt','json'); u.searchParams.set('max-results','50');
-    const key=u.href; let data=cget(key);
-    if (!data){ try{ data=await fetchJSON(u.href); } catch{ data=await fetchJSONP(u.href); } cset(key,data); }
-    const entries = (data?.feed?.entry||[]).map(mapEntry);
-    return entries;
-  }
-  async function getPostByPermalink(href){
-    const { entries } = await getFeed({ maxResults: 50 });
-    return entries.find(p=>p.permalink.includes(href)) || null;
-  }
-
-  /* ========= DOM Shortcuts ========= */
-  const room = () => $('#roomchat');
-  const center = () => $('#centerbar');
-  function bubble(html, type='system'){ const d=document.createElement('div'); d.className='bubble'; d.dataset.role=type; d.innerHTML=html; room().append(d); }
-  function postcard(p){
-    const el=document.createElement('article');
-    el.className='postcard'; el.dataset.permalink=p.permalink;
-    el.innerHTML = `
-      <div class="thumb ar ar-4-3">${p.thumb?`<img src="${safeURL(p.thumb)}" alt="" loading="lazy" decoding="async">`:''}</div>
-      <div class="body">
-        <h3 class="title"><a href="${p.permalink}" data-act="open" aria-label="Baca: ${esc(p.title)}">${esc(p.title)}</a></h3>
-        <p class="excerpt">${esc(p.summary||'')}</p>
-        <div class="meta">
-          <span class="m"><svg width="16" height="16" aria-hidden="true"><use href="#i-user"/></svg>${esc(p.author||'')}</span>
-          <span class="m"><svg width="16" height="16" aria-hidden="true"><use href="#i-calendar"/></svg>${new Date(p.published||Date.now()).toLocaleDateString()}</span>
-          <div class="actions">
-            <button class="iconbtn" data-act="open" aria-label="Baca"><svg width="18" height="18" aria-hidden="true"><use href="#i-open"/></svg><span>Baca</span></button>
-            <button class="iconbtn" data-act="copy" data-href="${p.permalink}" aria-label="Salin tautan"><svg width="18" height="18" aria-hidden="true"><use href="#i-copy"/></svg><span>Salin</span></button>
-          </div>
-        </div>
-      </div>`;
-    room().append(el);
-  }
-  function reader(p, similar=[]){
-    const el=document.createElement('article'); el.className='readercard';
-    const content = extractContentHTML(p.content || p.summary || '');
-    el.innerHTML = `
-      <header class="reader-head">
-        <h2>${esc(p.title)}</h2>
-        <div class="reader-meta">
-          <span><svg width="18" height="18" aria-hidden="true"><use href="#i-user"/></svg>${esc(p.author||'')}</span>
-          <span><svg width="18" height="18" aria-hidden="true"><use href="#i-calendar"/></svg>${new Date(p.published||Date.now()).toLocaleDateString()}</span>
-        </div>
-      </header>
-      <div class="reader-body">${content}</div>
-      <div class="reader-actions">
-        <button class="iconbtn" data-act="copy" data-href="${p.permalink}" aria-label="Salin tautan"><svg width="18" height="18" aria-hidden="true"><use href="#i-copy"/></svg><span>Salin</span></button>
-        <button class="iconbtn" data-act="comment" data-href="${p.permalink}" aria-label="Buka komentar"><svg width="18" height="18" aria-hidden="true"><use href="#i-comment"/></svg><span>Komentar</span></button>
-        <button class="iconbtn" data-act="properties" aria-label="Properti"><svg width="18" height="18" aria-hidden="true"><use href="#i-info"/></svg><span>Properti</span></button>
-      </div>
-      ${similar.length?`
-      <div class="feed" aria-label="Similar Posts">
-        ${similar.map(s=>`
-          <article class="postcard">
-            <div class="thumb ar ar-4-3">${s.thumb?`<img src="${safeURL(s.thumb)}" alt="" loading="lazy" decoding="async">`:''}</div>
-            <div class="body">
-              <h3 class="title"><a href="${s.permalink}" data-act="open" aria-label="Baca: ${esc(s.title)}">${esc(s.title)}</a></h3>
-              <div class="actions"><button class="iconbtn" data-act="open"><svg width="18" height="18" aria-hidden="true"><use href="#i-open"/></svg><span>Baca</span></button></div>
-            </div>
-          </article>`).join('')}
-      </div>`:''}`;
-    room().append(el);
-    el.scrollIntoView({behavior:'smooth', block:'start'});
-  }
-
-  /* ========= Sidebar: Left/Right + overlay (push/overlay) ========= */
-  const elLeft  = () => $('#sidebarLeft');
-  const elRight = () => $('#sidebarRight');
-  const overlay = () => $('#overlay');
-  function isDesktop(){ return matchMedia('(min-width:1025px)').matches; }
-  function applyPush(){
-    if (isDesktop()){
-      document.documentElement.style.setProperty('--sb-left',  elLeft()?.hasAttribute('hidden') ? '0px' : 'var(--w-left)');
-      document.documentElement.style.setProperty('--sb-right', elRight()?.hasAttribute('hidden')? '0px' : 'var(--w-right)');
-    } else {
-      document.documentElement.style.setProperty('--sb-left','0px');
-      document.documentElement.style.setProperty('--sb-right','0px');
+    const title = e.title?.$t || '(Tanpa judul)';
+    const published = e.published?.$t || e.updated?.$t || '';
+    const author = e.author?.[0]?.name?.$t || 'Unknown';
+    const link = (e.link||[]).find(l=>l.rel==='alternate')?.href || '';
+    const labels = (e.category||[]).map(c=>c.term).filter(Boolean);
+    let thumb = e['media$thumbnail']?.url || '';
+    // fallback: first <img> in content
+    if(!thumb && e.content?.$t){
+      const m = e.content.$t.match(/<img[^>]+src=["']([^"']+)["']/i);
+      if(m) thumb = m[1];
     }
-  }
-  function showOverlay(on){ const ov=overlay(); if(!ov) return; on ? ov.removeAttribute('hidden') : ov.setAttribute('hidden','hidden'); }
-  function openLeft(){ elLeft()?.removeAttribute('hidden'); elLeft()?.setAttribute('aria-hidden','false'); elLeft()?.classList.add('is-open'); showOverlay(true); trapFocus(elLeft()); applyPush(); }
-  function openRight(){ elRight()?.removeAttribute('hidden'); elRight()?.setAttribute('aria-hidden','false'); elRight()?.classList.add('is-open'); showOverlay(true); trapFocus(elRight()); applyPush(); }
-  function closePanels(){ [elLeft(), elRight()].forEach(n=>{ if(!n) return; n.classList.remove('is-open'); n.setAttribute('hidden','hidden'); n.setAttribute('aria-hidden','true'); }); showOverlay(false); releaseTrap(); applyPush(); }
-
-  /* ========= Focus trap ========= */
-  let trapHandler=null, lastFocus=null;
-  function trapFocus(root){
-    lastFocus = document.activeElement;
-    const f = root.querySelectorAll('a,button,input,select,textarea,[tabindex]:not([tabindex="-1"])');
-    const first=f[0], last=f[f.length-1];
-    trapHandler = (e)=>{
-      if(e.key==='Escape'){ closePanels(); }
-      if(e.key==='Tab'){
-        if(!f.length){ e.preventDefault(); return; }
-        if(e.shiftKey && document.activeElement===first){ last.focus(); e.preventDefault(); }
-        else if(!e.shiftKey && document.activeElement===last){ first.focus(); e.preventDefault(); }
-      }
-    };
-    document.addEventListener('keydown', trapHandler);
-    first?.focus();
-  }
-  function releaseTrap(){ if(trapHandler){ document.removeEventListener('keydown', trapHandler); trapHandler=null; } lastFocus?.focus?.(); }
-
-  /* ========= Router ========= */
-  const scrollPos = new Map(); // href -> scrollTop
-  async function navigateTo(href,{push=true}={}){
-    const norm = normalizeLink(href);
-    const kind = isPermalinkURL(norm) || {type:'home', href:'/'};
-    if (push) history.pushState({type:kind.type, href:kind.href, scroll: center().scrollTop}, '', kind.href);
-    await renderRoute(kind);
-  }
-  on(window,'popstate', async e=>{
-    const st = e.state || isPermalinkURL(location.href) || {type:'home', href:'/'};
-    await renderRoute(st, {restoreScroll: st.scroll ?? 0});
-  });
-
-  async function renderRoute(kind, opt={}){
-    if (opt.restoreScroll!=null) await sleep(0); // let layout settle
-    switch(kind.type){
-      case 'home':  await renderHome(); break;
-      case 'label': await renderLabel(kind.href); break;
-      case 'page':
-      case 'post':  await renderPermalink(kind.href); break;
-      default:      await renderHome();
-    }
-    if (opt.restoreScroll!=null) center().scrollTo({top: opt.restoreScroll, behavior:'instant'});
+    // summary snippet
+    const summary = (e.summary?.$t||'').replace(/<[^>]+>/g,'').slice(0,180);
+    // full content (if present)
+    const contentHTML = e.content?.$t || '';
+    const id = e.id?.$t || link || title;
+    return { id, url:link, title, published, author, labels, thumb, summary, contentHTML };
   }
 
-  /* ========= Prefetch ========= */
-  const prefetching = new Set();
-  function prefetchPermalink(href){ if(prefetching.has(href)) return; prefetching.add(href); getPostByPermalink(href).finally(()=>prefetching.delete(href)); }
+  /* ========= Priority 3: Sanitizer & content extractor ========= */
+  function extractContentHTML(html){
+    try{
+      const allowTags = new Set(['P','H1','H2','H3','H4','UL','OL','LI','A','IMG','FIGURE','FIGCAPTION','BLOCKQUOTE','PRE','CODE','HR','STRONG','EM','BR','SPAN','TABLE','THEAD','TBODY','TR','TH','TD','VIDEO','SOURCE']);
+      const allowAttrs = {
+        'A': ['href','title','rel','target'],
+        'IMG': ['src','alt','width','height','loading','decoding','fetchpriority'],
+        'VIDEO':['src','controls','poster','width','height','preload','muted','playsinline','loop'],
+        'SOURCE':['src','type'],
+        'CODE': ['class'],
+        'SPAN': ['class'],
+        'PRE': ['class'],
+        'TABLE':['border','cellpadding','cellspacing'],
+        'TH':['colspan','rowspan'], 'TD':['colspan','rowspan'],
+      };
+      const doc = new DOMParser().parseFromString('<div>'+html+'</div>','text/html');
+      const root = doc.body.firstElementChild;
 
-  /* ========= High-level renders ========= */
-  let greeted=false;
-  async function renderHome(){
-    room().innerHTML = '';
-    if (!greeted){ bubble('<p>Hai! Selamat datang 👋</p>'); greeted=true; }
-    const { entries } = await getFeed({ maxResults: POP+FEAT+6 });
-    bubble('<p>Popular</p>'); entries.slice(0,POP).forEach(postcard);
-    bubble('<p>Featured</p>'); entries.slice(POP, POP+FEAT).forEach(postcard);
-    bubble('<p>Selesai. Silakan pilih kartu untuk membaca.</p>');
-  }
-  async function renderLabel(href){
-    room().innerHTML='';
-    const lbl = decodeURIComponent((/\/search\/label\/([^?]+)/.exec(href)||[])[1]||'');
-    bubble(`<p>Label: <code>${esc(lbl)}</code></p>`);
-    const { entries } = await getFeed({ maxResults: 20, label: lbl });
-    entries.forEach(postcard);
-  }
-  async function renderPermalink(href){
-    const p = await getPostByPermalink(href);
-    room().innerHTML='';
-    if(!p){ bubble('<p class="bubble--warn">Maaf, artikel tidak ditemukan.</p>'); return; }
-    const { entries } = await getFeed({ maxResults: 12 });
-    const sim = entries.filter(x=>x.id!==p.id && x.labels.some(l=>p.labels.includes(l))).slice(0,3);
-    reader(p, sim);
-    fillRightPanels(p);
-  }
-
-  /* ========= SidebarLeft: Labels 2-level & Pages ========= */
-  async function buildLabels(){
-    const wrap = $('#labelList'); if(!wrap) return;
-    wrap.innerHTML = '';
-    // ambil sample feed untuk mengumpulkan labels
-    const { entries, total } = await getFeed({ maxResults: 50 });
-    const labelCount = new Map();
-    entries.forEach(p => (p.labels||[]).forEach(l => labelCount.set(l,(labelCount.get(l)||0)+1)));
-    // sort alfabetis
-    const labels = [...labelCount.keys()].sort((a,b)=>a.localeCompare(b,'id'));
-    labels.forEach(lbl=>{
-      const d = document.createElement('details'); d.className='label-item';
-      d.innerHTML = `
-        <summary>
-          <svg width="18" height="18" aria-hidden="true"><use href="#i-tag"/></svg>
-          <span class="txt">${esc(lbl)}</span>
-          <span class="count">${labelCount.get(lbl)}</span>
-          <svg width="18" height="18" aria-hidden="true" style="margin-left:auto"><use href="#i-chevron"/></svg>
-        </summary>
-        <div class="acc" role="region" aria-label="Posting ${esc(lbl)}"></div>`;
-      // lazy load isi label saat expand pertama kali
-      d.addEventListener('toggle', async ()=>{
-        if (d.open && !d.dataset.loaded){
-          const acc = d.querySelector('.acc');
-          acc.innerHTML = '<p class="small">Memuat…</p>';
-          const { entries } = await getFeed({ maxResults: 50, label: lbl });
-          entries.sort((a,b)=>a.title.localeCompare(b.title,'id'));
-          acc.innerHTML = entries.map(p=>`
-            <button class="page-item" data-href="${p.permalink}">
-              <svg width="18" height="18" aria-hidden="true"><use href="#i-page"/></svg>
-              <span>${esc(p.title)}</span>
-            </button>`).join('');
-          d.dataset.loaded = '1';
+      (function sanitize(node){
+        const children = Array.from(node.childNodes);
+        for(const n of children){
+          if(n.nodeType===1){ // element
+            if(!allowTags.has(n.tagName)){
+              // unwrap allowed text
+              n.replaceWith(...Array.from(n.childNodes));
+              continue;
+            }
+            // scrub attrs
+            const allowed = new Set(allowAttrs[n.tagName] || []);
+            for(const a of Array.from(n.attributes)){
+              const name = a.name.toLowerCase();
+              if(name.startsWith('on')) { n.removeAttribute(a.name); continue; }
+              if(!allowed.has(a.name)) n.removeAttribute(a.name);
+            }
+            // post-process
+            if(n.tagName==='A'){
+              const href = n.getAttribute('href')||'#';
+              n.setAttribute('rel','noopener nofollow ugc');
+              if(/^https?:\/\//i.test(href) && !isSameOrigin(href)) n.setAttribute('target','_blank');
+            }
+            if(n.tagName==='IMG'){
+              n.setAttribute('loading','lazy');
+              n.setAttribute('decoding','async');
+              if(!n.getAttribute('width') || !n.getAttribute('height')){
+                // best-effort: set square placeholder to guard CLS
+                n.setAttribute('width','800'); n.setAttribute('height','450');
+              }
+            }
+            sanitize(n);
+          }else if(n.nodeType===8){ // comment
+            n.remove();
+          }
         }
-      }, {once:false});
-      wrap.append(d);
-    });
-  }
-  async function buildPages(){
-    const wrap = $('#pageList'); if(!wrap) return; wrap.innerHTML='';
-    const pages = await getPages();
-    pages.sort((a,b)=>a.title.localeCompare(b.title,'id'));
-    wrap.innerHTML = pages.map(p=>`
-      <button class="page-item" data-href="${p.permalink}">
-        <svg width="18" height="18" aria-hidden="true"><use href="#i-page"/></svg>
-        <span>${esc(p.title)}</span>
-      </button>`).join('');
+      })(root);
+
+      return root.innerHTML;
+    }catch(e){
+      return html; // fallback raw (better than blank)
+    }
   }
 
-  /* ========= SidebarRight: Meta / ToC / Comments placeholder ========= */
-  function fillRightPanels(p){
-    const meta = $('#rs-meta'), toc = $('#rs-toc'), com = $('#rs-comments');
-    if(meta) meta.innerHTML = `
-      <div class="meta-list">
-        <div class="meta-row"><svg width="18" height="18" aria-hidden="true"><use href="#i-user"/></svg><span>${esc(p.author||'')}</span></div>
-        <div class="meta-row"><svg width="18" height="18" aria-hidden="true"><use href="#i-calendar"/></svg><span>${new Date(p.published||Date.now()).toLocaleString()}</span></div>
-        <div class="meta-row"><svg width="18" height="18" aria-hidden="true"><use href="#i-tag"/></svg><span>${(p.labels||[]).map(esc).join(', ')||'-'}</span></div>
-        <div class="meta-row"><svg width="18" height="18" aria-hidden="true"><use href="#i-link"/></svg><a href="${p.permalink}" target="_blank" rel="noopener">${p.permalink}</a></div>
-      </div>`;
-    if(toc){
-      // TOC sederhana dari h2/h3
-      const doc = new DOMParser().parseFromString(`<div>${p.content||''}</div>`,'text/html');
-      const heads = [...doc.querySelectorAll('h2,h3')].slice(0,24);
-      toc.innerHTML = heads.length? `<ol class="toc-list">${heads.map((h,i)=>`<li>${esc(h.textContent.trim())}</li>`).join('')}</ol>` : `<p class="small">Tidak ada daftar isi.</p>`;
-    }
-    if(com) com.innerHTML = `<div class="comment-card"><div class="who">Komentar</div><p>Placeholder OAuth 2.0. Klik tombol “Komentar” di readercard untuk membuka komentar resmi Blogger pada tab baru.</p></div>`;
+  /* ========= Priority 4: Renderers ========= */
+  const elFeed = qs('#feed');
+  const elRoom = qs('#roomchat');
+  const elRight= qs('#sidebarRight');
+  const elSmart= qs('#smartScroll');
+
+  function clearStream(){ if(elRoom) elRoom.innerHTML=''; }
+
+  function bubble(text, role='system', cls=''){
+    const div = document.createElement('div');
+    div.className = 'bubble ' + cls;
+    div.dataset.role = role;
+    div.innerHTML = `<p>${text}</p>`;
+    elRoom.appendChild(div);
+    return div;
   }
-  // tabs
-  on(document, 'click', e=>{
-    const t = e.target.closest('.rs-tab'); if(!t) return;
-    $$('.rs-tab').forEach(x=>x.classList.remove('is-active'));
-    t.classList.add('is-active');
-    const id = 'rs-' + t.dataset.tab;
-    $$('.rs-pane').forEach(x=>x.classList.remove('is-active'));
-    $('#'+id)?.classList.add('is-active');
+
+  function renderPostcard(item){
+    const a = document.createElement('article');
+    a.className='postcard';
+    a.dataset.id=item.id;
+    a.innerHTML = `
+      <div class="thumb ar-16-9">
+        ${item.thumb ? `<img class="media" src="${item.thumb}" alt="Sampul ${escapeHTML(item.title)}" width="800" height="450" loading="lazy" decoding="async">` : ``}
+      </div>
+      <h3 id="t-${cssId(item.id)}"><a class="post-link" href="${item.url}">${escapeHTML(item.title)}</a></h3>
+      <p>${escapeHTML(item.summary||'')}</p>
+      <p class="meta">
+        <span>Oleh <strong>${escapeHTML(item.author||'')}</strong></span>
+        ${item.published? `<span>${fmtDate(item.published)}</span>`:''}
+        ${item.labels?.length? `<span>Label: ${item.labels.slice(0,3).map(l=>`<a href="${labelUrl(l)}">${escapeHTML(l)}</a>`).join(', ')}</span>`:''}
+      </p>
+      <div class="actions">
+        <button class="iconbtn js-read" type="button" aria-label="Baca"><svg width="16" height="16"><use href="#i-open"/></svg><span>Baca</span></button>
+        <button class="iconbtn js-save" type="button" aria-label="Simpan"><svg width="16" height="16"><use href="#i-star"/></svg><span>Simpan</span></button>
+        <button class="iconbtn js-copy" type="button" aria-label="Salin tautan"><svg width="16" height="16"><use href="#i-copy"/></svg><span>Salin</span></button>
+        <button class="iconbtn js-share" type="button" aria-label="Bagikan"><svg width="16" height="16"><use href="#i-share"/></svg><span>Bagikan</span></button>
+        <button class="iconbtn js-comments" type="button" aria-label="Buka komentar"><svg width="16" height="16"><use href="#i-comment"/></svg><span>Komentar</span></button>
+        <button class="iconbtn js-props" type="button" aria-label="Lihat properti"><svg width="16" height="16"><use href="#i-link"/></svg><span>Properti</span></button>
+      </div>
+    `;
+    // actions
+    on(a,'click', (e)=>{
+      const t = e.target.closest('button, a');
+      if(!t) return;
+      if(t.classList.contains('js-read') || t.classList.contains('post-link')){
+        e.preventDefault();
+        navigateTo(item.url);
+      }else if(t.classList.contains('js-copy')){
+        e.preventDefault(); copyLink(item.url);
+      }else if(t.classList.contains('js-share')){
+        e.preventDefault(); shareLink(item);
+      }else if(t.classList.contains('js-comments')){
+        e.preventDefault(); openRight('comments');
+      }else if(t.classList.contains('js-props')){
+        e.preventDefault(); fillMeta(item); openRight('meta');
+      }
+    }, {passive:false});
+    return a;
+  }
+
+  function renderReadercard(item){
+    const art = document.createElement('article');
+    art.className='readercard';
+    art.dataset.id = item.id;
+    const safeHTML = extractContentHTML(item.contentHTML||'');
+    art.innerHTML = `
+      <header>
+        <h2>${escapeHTML(item.title||'(Tanpa judul)')}</h2>
+        <p class="meta">
+          <span>Oleh <strong>${escapeHTML(item.author||'')}</strong></span>
+          ${item.published? `<span>${fmtDate(item.published)}</span>`:''}
+          ${item.labels?.length? `<span>Label: ${item.labels.map(l=>`<a href="${labelUrl(l)}">${escapeHTML(l)}</a>`).join(', ')}</span>`:''}
+        </p>
+      </header>
+      <section class="body">${safeHTML||'<p>(Konten kosong)</p>'}</section>
+      <footer class="actions">
+        <button class="iconbtn js-copy" type="button" aria-label="Salin tautan"><svg width="16" height="16"><use href="#i-copy"/></svg><span>Salin</span></button>
+        <button class="iconbtn js-save" type="button" aria-label="Simpan"><svg width="16" height="16"><use href="#i-star"/></svg><span>Simpan</span></button>
+        <button class="iconbtn js-share" type="button" aria-label="Bagikan"><svg width="16" height="16"><use href="#i-share"/></svg><span>Bagikan</span></button>
+        <button class="iconbtn js-comments" type="button" aria-label="Buka komentar"><svg width="16" height="16"><use href="#i-comment"/></svg><span>Komentar</span></button>
+        <button class="iconbtn js-props" type="button" aria-label="Lihat properti"><svg width="16" height="16"><use href="#i-link"/></svg><span>Properti</span></button>
+      </footer>
+    `;
+    on(art,'click',(e)=>{
+      const b = e.target.closest('button');
+      if(!b) return;
+      if(b.classList.contains('js-copy')) copyLink(item.url);
+      else if(b.classList.contains('js-share')) shareLink(item);
+      else if(b.classList.contains('js-comments')) openRight('comments');
+      else if(b.classList.contains('js-props')) { fillMeta(item); openRight('meta'); }
+    });
+    // similar posts (best-effort by first label)
+    const first = item.labels?.[0];
+    if(first){
+      fetchFeedList({label:first, max:6}).then(list=>{
+        const candidates = list.filter(p=>p.url!==item.url).slice(0,3);
+        if(candidates.length){
+          const sec = document.createElement('section');
+          sec.className='similar';
+          sec.setAttribute('aria-label','Similar Post');
+          sec.innerHTML = `<h3 class="eyebrow">Similar Post</h3>`;
+          candidates.forEach(c=>{
+            const s = document.createElement('article');
+            s.className='similarcard';
+            s.innerHTML = `<h4><a href="${c.url}" class="post-link">${escapeHTML(c.title)}</a></h4>
+                           <p class="meta">${(c.labels||[])[0]||''} • ${fmtDate(c.published)}</p>`;
+            sec.appendChild(s);
+          });
+          art.appendChild(sec);
+        }
+      }).catch(()=>{});
+    }
+    // fill Right meta
+    fillMeta(item);
+    return art;
+  }
+
+  /* ========= Priority 5: Data orchestration ========= */
+  async function fetchFeedList({label,max=10,start=1}={}){
+    const url = FEED.postsSummary({label,max,start});
+    const data = await fetchJSONP(url);
+    const entries = data?.feed?.entry || [];
+    return entries.map(mapEntry);
+  }
+
+  async function fetchFullByUrl(urlStr){
+    // try search by slug
+    const u = new URL(urlStr);
+    const slug = u.pathname.split('/').pop()?.replace(/\.html$/,'') || '';
+    const data = await fetchJSONP(FEED.searchFull({q:slug, max:5}));
+    const entries = data?.feed?.entry || [];
+    const items = entries.map(mapEntry);
+    // find exact match by alternate link
+    const found = items.find(it=>normalizeLink(it.url)===normalizeLink(urlStr)) || items[0];
+    if(!found) throw new Error('Post not found');
+    return found;
+  }
+
+  /* ========= Priority 6: Router & navigation ========= */
+  function preserveScroll(url){
+    state.routeScroll.set(url, window.scrollY||document.documentElement.scrollTop||0);
+  }
+  function restoreScroll(url){
+    const y = state.routeScroll.get(url)||0;
+    window.scrollTo({top:y, behavior:'instant'});
+  }
+
+  async function routeTo(urlStr, opts={push:false}){
+    const url = normalizeLink(urlStr);
+    const kind = detectRoute(url);
+    // save previous scroll
+    preserveScroll(history.state?.url||location.href);
+
+    clearStream();
+    if(kind.type==='home'){
+      renderHome();
+    }else if(kind.type==='post' || kind.type==='page'){
+      bubble('Memuat…');
+      try{
+        const item = await fetchFullByUrl(url);
+        clearStream();
+        elRoom.appendChild(renderReadercard(item));
+        scrollToLatest();
+      }catch(e){
+        clearStream();
+        bubble('Gagal memuat konten. Coba lagi nanti.','system','callout error');
+      }
+    }else if(kind.type==='label'){
+      bubble(`Label: <strong>${escapeHTML(kind.label)}</strong>`);
+      try{
+        const list = await fetchFeedList({label:kind.label, max:12});
+        if(!list.length) elRoom.appendChild(calloutInfo('Belum ada posting.'));
+        list.forEach(p=>elRoom.appendChild(renderPostcard(p)));
+        scrollToLatest();
+      }catch(e){
+        elRoom.appendChild(calloutError('Tidak dapat memuat label.'));
+      }
+    }else{
+      // external → follow
+      location.href = url;
+      return;
+    }
+
+    if(opts.push){
+      history.pushState({url},'',url);
+    }else{
+      history.replaceState({url},'',url);
+    }
+  }
+
+  function navigateTo(href){
+    const url = normalizeLink(href);
+    const kind = detectRoute(url);
+    if(kind.type==='external' || !isSameOrigin(url)) { location.href = url; return; }
+    routeTo(url, {push:true});
+  }
+
+  on(window,'popstate', (e)=>{
+    const url = e.state?.url || location.href;
+    routeTo(url, {push:false});
+    restoreScroll(url);
   });
 
-  /* ========= Global actions & intercept ========= */
-  document.addEventListener('click', e=>{
-    // Intercept internal anchors SPA
-    const a = e.target.closest('a[href]');
-    if (a && (a.origin===location.origin)) {
-      const info = isPermalinkURL(a.href);
-      const modifier = e.metaKey||e.ctrlKey||e.shiftKey||e.altKey;
-      if(info && !modifier && !a.hasAttribute('data-no-spa')){ e.preventDefault(); navigateTo(a.href); }
+  // Intercept clicks on anchors for SPA-feel
+  on(document,'click',(e)=>{
+    const a = e.target.closest('a');
+    if(!a) return;
+    const href = a.getAttribute('href');
+    if(!href) return;
+    const url = normalizeLink(href);
+    if(!isSameOrigin(url)) return; // external
+    const kind = detectRoute(url);
+    if(kind.type==='home' || kind.type==='post' || kind.type==='page' || kind.type==='label'){
+      e.preventDefault();
+      navigateTo(url);
     }
-    const btn = e.target.closest('[data-act],[data-action]');
-    if(!btn) return;
-    const act = btn.getAttribute('data-act') || btn.getAttribute('data-action');
-    if(act==='open'){ e.preventDefault(); const href = btn.dataset.href || btn.getAttribute('href') || btn.closest('[data-permalink]')?.dataset.permalink; if(href) navigateTo(href); }
-    else if(act==='copy'){ const href = btn.dataset.href || btn.closest('[data-permalink]')?.dataset.permalink; if(!href) return;
-      navigator.clipboard.writeText(new URL(href, location.origin).href).then(()=>bubble('<p class="bubble--success">Tautan disalin.</p>'),()=>bubble('<p class="bubble--error">Gagal menyalin.</p>'));
-    }
-    else if(act==='comment'){ const href=btn.dataset.href; openRight(); if(href) window.open(href+'#comments','_blank','noopener'); }
-    else if(act==='properties'){ openRight(); }
-    else if(act==='toggle-left'){ elLeft()?.hasAttribute('hidden')?openLeft():closePanels(); }
-    else if(act==='toggle-right'){ elRight()?.hasAttribute('hidden')?openRight():closePanels(); }
-    else if(act==='toggle-dock'){ toggleDock(true); }
-    else if(act==='close'){ toggleDock(false); }
   }, {passive:false});
 
-  // Prefetch on hover/touch
-  document.addEventListener('mouseenter', e=>{
-    const t = e.target.closest('a[href], .postcard, .readercard');
-    const href = t?.getAttribute('href') || t?.dataset.permalink;
-    if(href) prefetchPermalink(href);
-  }, true);
-
-  // Overlay click → close
-  on($('#overlay'), 'click', closePanels);
-
-  // SmartScroll visibility based on center scroll
-  (function smartScroll(){
-    const btn = $('#smartScroll'); if(!btn) return;
-    const el = center();
-    const update = ()=>{
-      const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 160;
-      btn.hidden = nearBottom;
-    };
-    on(el,'scroll',update,{passive:true}); update();
-    on(btn,'click',()=> el.scrollTo({top:999999,behavior:'smooth'}));
-  })();
-
-  // Dockbar (top-sheet) + hotkeys
-  function toggleDock(on){
-    const d = $('#dockbar'); if (!d) return;
-    if (on===undefined) on = d.hasAttribute('hidden');
-    if (on){ d.removeAttribute('hidden'); d.classList.add('open'); trapFocus($('.dock__sheet')); }
-    else { d.classList.remove('open'); d.setAttribute('hidden','hidden'); releaseTrap(); }
+  /* ========= Priority 7: Home renderer ========= */
+  async function renderHome(){
+    bubble('Halo! 👋 Selamat datang di Gaga.');
+    // Popular: gunakan label "Popular" bila ada
+    try{
+      const popular = await fetchFeedList({label:'Popular', max:state.popCount});
+      if(popular.length){
+        elRoom.appendChild(sectionEyebrow('Popular'));
+        popular.forEach(p=>elRoom.appendChild(renderPostcard(p)));
+      }
+    }catch(e){/* diam */}
+    // Featured: gunakan label "Featured"
+    try{
+      const featured = await fetchFeedList({label:'Featured', max:state.featCount});
+      if(featured.length){
+        elRoom.appendChild(sectionEyebrow('Featured'));
+        featured.forEach(p=>elRoom.appendChild(renderPostcard(p)));
+      }
+    }catch(e){/* diam */}
+    bubble('Itu dulu dari kami. Selamat membaca! ✨');
+    scrollToLatest();
   }
-  on(document,'keydown', e=>{
-    if (e.key==='Escape'){ if (!$('#dockbar')?.hasAttribute('hidden')) toggleDock(false); else closePanels(); }
-    if ((e.ctrlKey||e.metaKey) && e.key===','){ e.preventDefault(); toggleDock(true); }
-    if ((e.ctrlKey||e.metaKey) && (e.key.toLowerCase()==='l')){ e.preventDefault(); elLeft()?.hasAttribute('hidden')?openLeft():closePanels(); }
-    if ((e.ctrlKey||e.metaKey) && (e.key.toLowerCase()==='r')){ e.preventDefault(); elRight()?.hasAttribute('hidden')?openRight():closePanels(); }
-  });
-  on($('.dock__scrim'), 'click', ()=>toggleDock(false));
 
-  // Dockbar tiles → set data-*
-  on(document, 'click', e=>{
-    const t = e.target.closest('.tile'); if(!t) return;
-    const act=t.dataset.action, val=t.dataset.value, delta=+t.dataset.delta||0;
-    if (act==='theme'){ document.body.dataset.theme=val; }
-    if (act==='density'){ document.body.dataset.density=val; }
-    if (act==='bubble'){ document.body.dataset.bubble=val; }
-    if (act==='motion'){ document.body.dataset.motion=val; }
-    if (act==='ground'){ document.body.dataset.ground=val; }
-    if (act==='bg'){ document.body.dataset.bg=val; }
-    if (act==='focus'){ document.body.dataset.focus=val; }
-    if (act==='tsize'){ const ts=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ts'))||1; document.documentElement.style.setProperty('--ts', String(Math.max(0.85, Math.min(1.25, ts+delta)))); }
-    if (act==='reset'){ document.documentElement.style.removeProperty('--ts'); ['theme','density','bubble','motion','ground','bg','focus'].forEach(k=>delete document.body.dataset[k]); }
-  });
-
-  // Background video toggler
-  const bgv = $('#bgVideo');
-  function applyBGVideo(){
-    const d=document.body.dataset;
-    const on = d.theme==='glass' && d.bg==='video' && d.motion==='on';
-    if (!bgv) return;
-    (on ? bgv.play() : bgv.pause())?.catch(()=>{});
+  /* ========= Priority 8: Right panel (Meta/ToC/Comments placeholder) ========= */
+  function openRight(tab){
+    // panel right selalu tampak di kerangka uji; pada medium ia di bawah → scroll ke sana
+    if(tab) switchTab(tab);
+    // scrollIntoView jika bukan desktop 3 kolom
+    const w = window.innerWidth;
+    if(w<1024){
+      elRight?.scrollIntoView({behavior:'smooth', block:'start'});
+    }
   }
-  const mo = new MutationObserver(applyBGVideo);
-  mo.observe(document.body, {attributes:true, attributeFilter:['data-theme','data-bg','data-motion']});
-  applyBGVideo();
+  function switchTab(name){
+    const tabs = qsa('.rs-tab', elRight);
+    const panes= qsa('.rs-pane', elRight);
+    tabs.forEach(t=>t.classList.toggle('is-active', t.dataset.tab===name));
+    panes.forEach(p=>p.classList.toggle('is-active', p.id==='rs-'+name));
+  }
+  function fillMeta(item){
+    const set = (sel, val)=>{ const el = qs(sel, elRight); if(el) el.textContent = val||'—'; };
+    set('#m-title', item.title);
+    set('#m-author', item.author);
+    set('#m-date', item.published? fmtDate(item.published):'—');
+    set('#m-labels', (item.labels||[]).join(', '));
+    set('#m-link', item.url);
+    const words = (stripHTML(item.contentHTML||'').trim().split(/\s+/).length)||0;
+    set('#m-words', String(words));
+    set('#m-read', '~' + Math.max(1, Math.ceil(words/200)) + ' min');
+  }
 
-  // Build SidebarLeft content (labels & pages)
-  buildLabels().catch(console.warn);
-  buildPages().catch(console.warn);
+  /* ========= Priority 9: Prefetch & SmartScroll & Utilities ========= */
+  // Prefetch on hover/touch for post links
+  on(document,'mouseover', (e)=>{
+    const a = e.target.closest('a.post-link');
+    if(!a) return;
+    const url = normalizeLink(a.href);
+    prefetchPost(url);
+  });
+  on(document,'touchstart', (e)=>{
+    const a = e.target.closest('a.post-link');
+    if(!a) return;
+    const url = normalizeLink(a.href);
+    prefetchPost(url);
+  });
+  let prefetching = new Set();
+  function prefetchPost(url){
+    if(prefetching.has(url)) return;
+    prefetching.add(url);
+    fetchFullByUrl(url).catch(()=>{}).finally(()=>prefetching.delete(url));
+  }
 
-  // Boot: first route
-  on(window,'resize', applyPush, {passive:true});
-  applyPush();
-  (function boot(){
-    const info = isPermalinkURL(location.href) || {type:'home', href:'/'};
-    if (!history.state) history.replaceState(info, '', info.href);
-    renderRoute(info).then(()=>{ const rc = room(); rc && rc.focus && rc.focus({preventScroll:true}); });
-  })();
+  // SmartScroll: tampil bila tidak di bawah
+  let smartVisible = false;
+  on(window, 'scroll', smartTick, {passive:true});
+  function smartTick(){
+    if(!elSmart) return;
+    const nearBottom = (window.innerHeight + window.scrollY) >= (document.body.offsetHeight - 240);
+    if(!nearBottom && !smartVisible){ elSmart.hidden=false; smartVisible=true; }
+    else if(nearBottom && smartVisible){ elSmart.hidden=true; smartVisible=false; }
+  }
+  on(elSmart,'click', (e)=>{ e.preventDefault(); scrollToLatest(); }, {passive:false});
 
+  function scrollToLatest(){
+    window.scrollTo({top: document.body.scrollHeight, behavior:'smooth'});
+  }
+
+  // Copy & Share
+  async function copyLink(url){
+    try{
+      await navigator.clipboard.writeText(url);
+      elRoom.appendChild(calloutSuccess('Tautan disalin.'));
+      scrollToLatest();
+    }catch(e){
+      elRoom.appendChild(calloutError('Gagal menyalin tautan.'));
+      scrollToLatest();
+    }
+  }
+  async function shareLink(item){
+    const url = item.url, title=item.title;
+    try{
+      if(navigator.share){
+        await navigator.share({title, url});
+      }else{
+        await navigator.clipboard.writeText(url);
+        elRoom.appendChild(calloutInfo('Berbagi tidak didukung. Tautan disalin.'));
+        scrollToLatest();
+      }
+    }catch(e){}
+  }
+
+  // Dockbar: minimal theme toggle (berdasar teks tombol)
+  const dock = qs('#dockbar');
+  if(dock){
+    on(dock,'click',(e)=>{
+      const b = e.target.closest('.tile,button');
+      if(!b) return;
+      const label = (b.textContent||'').trim().toLowerCase();
+      if(label==='dark' || label==='light' || label==='glass'){
+        setTheme(label);
+      }else if(label==='reset'){
+        resetPrefs();
+      }else if(label.includes('ukuran teks')){
+        // handled by range input
+      }
+    }, {passive:false});
+    const tsize = qs('#tsize', dock);
+    if(tsize){
+      on(tsize,'input', ()=>{
+        const val = parseFloat(tsize.value||'1');
+        document.documentElement.style.setProperty('--ts', String(val));
+        try{ localStorage.setItem('gaga:ts', String(val)); }catch(e){}
+      }, {passive:true});
+      // restore
+      try{
+        const ts = parseFloat(localStorage.getItem('gaga:ts')||'1'); 
+        if(!isNaN(ts)) { tsize.value=String(ts); document.documentElement.style.setProperty('--ts', String(ts)); }
+      }catch(e){}
+    }
+  }
+  function setTheme(name){
+    document.body.setAttribute('data-theme', name);
+    document.documentElement.style.colorScheme = (name==='light'?'light':'dark');
+    try{ localStorage.setItem('gaga:theme', name); }catch(e){}
+  }
+  function resetPrefs(){
+    try{
+      localStorage.removeItem('gaga:theme');
+      localStorage.removeItem('gaga:ts');
+    }catch(e){}
+    setTheme('light');
+    document.documentElement.style.removeProperty('--ts');
+  }
+
+  /* ========= Priority 10: Little helpers ========= */
+  function cssId(s){ return String(s).replace(/[^\w-]+/g,'_').slice(0,64); }
+  function escapeHTML(s){ return String(s).replace(/[&<>"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
+  function stripHTML(s){ return String(s||'').replace(/<[^>]+>/g,' '); }
+  function labelUrl(name){ return `${state.blogBase.replace(/\/$/,'')}/search/label/${encodeURIComponent(name)}`; }
+  function fmtDate(iso){
+    const d = new Date(iso); if(isNaN(d)) return '';
+    return d.toLocaleDateString('id-ID',{year:'numeric',month:'short',day:'numeric'});
+  }
+  function sectionEyebrow(text){
+    const p = document.createElement('p'); p.className='eyebrow'; p.textContent=text; return p;
+  }
+  function calloutInfo(msg){ const d=document.createElement('div'); d.className='callout info'; d.innerHTML=`<p>${msg}</p>`; return d; }
+  function calloutError(msg){ const d=document.createElement('div'); d.className='callout error'; d.innerHTML=`<p>${msg}</p>`; return d; }
+  function calloutSuccess(msg){ const d=document.createElement('div'); d.className='callout success'; d.innerHTML=`<p>${msg}</p>`; return d; }
+
+  /* ========= Boot ========= */
+  // Initial route
+  routeTo(location.href, {push:false});
+  smartTick(); // set initial smartscroll visibility
 })();
