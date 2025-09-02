@@ -1,130 +1,268 @@
-/* =====================  V2: CHAT FEEL & POLISH  ===================== */
+/* ============================================================
+   GAGA THEME v2 • self-contained baseline
+   ============================================================ */
 
-/* 0) dasar: jangan biarkan halaman global ikut scroll */
-html, body { height: 100%; }
-body { overflow: hidden; }
+/* -------- Reset & base -------- */
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+[hidden]{display:none!important}
+img,video,svg{max-width:100%;height:auto}
+button,input,select,textarea{font:inherit;color:inherit}
+a{color:inherit;text-decoration:none}
+a:hover{text-decoration:underline}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:8px}
+.sr-only{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 
-/* 1) Shell & Center: satu scroll di center-wrap */
-#shell{ min-height: 100dvh; }
-.center{ min-width: 0; }
-.center-wrap{
-  display:flex; flex-direction:column;
-  height:100dvh;               /* jadi scrollport utama */
-  overflow:auto; overscroll-behavior-y: contain;
-  scroll-behavior:smooth;
-  -webkit-overflow-scrolling:touch;
-  padding-bottom: calc(var(--chatbar-h) + var(--safe-b)); /* ruang utk sticky chatbar */
+/* -------- Tokens (spacing, radius, shadow, etc.) -------- */
+:root{
+  /* spacing scale */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px;
+
+  /* layout width */
+  --left-w:280px; --right-w:300px;
+  --center-max:1100px; --center-pad:16px;
+
+  /* component */
+  --radius-10:10px; --radius-12:12px; --radius-16:16px;
+  --shadow-1:0 1px 2px rgba(0,0,0,.06), 0 6px 24px rgba(0,0,0,.06);
+
+  /* focus & accent */
+  --focus:#D81B60; /* magenta */
+  --accent:#2F6FED;
+
+  /* chatbar safe area */
+  --chatbar-h:64px; --safe-b:env(safe-area-inset-bottom,0px);
+
+  /* default (will be overridden by theme) */
+  --bg:#FFFFFF; --elev:#FFFFFF; --text:#1B1F29; --muted:#4A5260; --border:#E5EAF2;
 }
 
-/* 2) Chatbar sticky (di scrollport yang sama) */
-.chatbar{
-  position: sticky; bottom: 0;
-  z-index: 5;
-  backdrop-filter: none;
+/* -------- Theme: Light / Dark / Glass -------- */
+body{background:var(--bg);color:var(--text);line-height:1.6;
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial
 }
 
-/* 3) SmartScroll tombol mengambang di atas chatbar */
-#smartScroll{
-  position: sticky;
-  bottom: calc(var(--chatbar-h) + 12px);
-  margin-left: auto;
+/* Light (default) */
+body[data-theme="light"]{
+  --bg:#FFFFFF; --elev:#FFFFFF; --text:#1B1F29; --muted:#4A5260; --border:#E5EAF2;
 }
 
-/* 4) Dockbar grid lebih adaptif */
-.dock{ margin-bottom: var(--sp-4); }
-.dock-grid{ display:grid; gap: var(--sp-3); grid-template-columns: repeat(3, minmax(0,1fr)); }
-.dock-grid > .tile{ min-height:44px; }
-@media (max-width: 599px){
-  .dock-grid{ grid-template-columns: 1fr; }
-  /* slider full-row, nyaman jempol */
-  .dock-grid > label.tile{ grid-column: 1 / -1; }
-}
-@media (min-width:600px) and (max-width:1023px){
-  .dock-grid{ grid-template-columns: repeat(2, minmax(0,1fr)); }
+/* Dark */
+body[data-theme="dark"]{
+  --bg:#0B0E13; --elev:#141923; --text:#E7EAF0; --muted:#B5BAC6; --border:#2A3040;
 }
 
-/* 5) Action bar kompak di layar kecil (ikon-only) */
-@media (max-width: 360px){
-  .actions .iconbtn span{ display:none; }
-  .actions{ gap: 8px; }
+/* Glass (panel translucent; sidebars solid) */
+body[data-theme="glass"]{
+  --bg:#0B0E13;
+  --text:#E7EAF0; --muted:#B5BAC6;
+  --border:color-mix(in oklab,#E7EAF0 35%, transparent);
+  --elev:color-mix(in oklab,#141923 88%, transparent);
 }
-
-/* 6) Label 2-level: rapikan & responsif 320–393px */
-.label-item summary{
-  display:grid; grid-template-columns: auto 1fr auto auto;
-  align-items:center; gap: var(--sp-2);
-  min-height:44px; padding:8px 10px;
+body[data-theme="glass"] .card,
+body[data-theme="glass"] .bubble,
+body[data-theme="glass"] .postcard,
+body[data-theme="glass"] .readercard,
+body[data-theme="glass"] .chatbar,
+body[data-theme="glass"] .dock{
+  -webkit-backdrop-filter: blur(12px) saturate(1.05);
+  backdrop-filter: blur(12px) saturate(1.05);
+  background: color-mix(in oklab, var(--elev) 100%, transparent);
+  border-color: color-mix(in oklab, var(--text) 30%, transparent);
 }
-.label-item .label-name{ font-weight:700; }
-.label-item .count{ color:var(--muted); font-size:.92em; }
-.label-item .chev{ opacity:.8; margin-left: var(--sp-2); transition: transform .2s ease; }
-.label-item[open] .chev{ transform: rotate(180deg); }
-.label-item .acc{ display:grid; gap: var(--sp-2); padding: var(--sp-2); border-top:1px solid var(--border); }
-.label-item .acc .page-item{ min-height:44px; }
-@media (max-width:360px){
-  .label-item .count{ display:none; }        /* padatkan di device sempit */
+body[data-theme="glass"] .sidebar{
+  -webkit-backdrop-filter:none!important; backdrop-filter:none!important;
+  background: var(--bg); border-color: var(--border);
 }
-
-/* 7) Bubble dengan tail siku (90°) */
-.bubble{ position:relative; border-radius:12px; }
-.bubble[data-role="me"]::after,
-.bubble[data-role="you"]::before{
-  content:""; position:absolute; width:10px; height:10px; background:var(--elev);
-  box-shadow: 1px 1px 0 0 var(--border);           /* garis siku */
-}
-.bubble[data-role="me"]::after{ right:-6px; bottom:14px; }
-.bubble[data-role="you"]::before{ left:-6px;  bottom:14px; transform: scaleX(-1); }
-.bubble p{ overflow-wrap:anywhere; }
-
-/* 8) Tipografi & ritme (baca nyaman) */
-.room, .postcard .meta, .readercard .body{ overflow-wrap:anywhere; }
-.readercard .body{ max-width: 72ch; line-height: 1.6; }
-.card,.bubble,.postcard,.readercard,.similarcard{ padding:16px; margin:12px 0; }
-.meta{ display:flex; flex-wrap:wrap; gap:12px; }
-
-/* 9) Sidebar Right — polish & usability */
-#sidebarRight{ background: var(--elev); border:1px solid var(--border); border-radius:12px; }
-#sidebarRight .sb-top{
-  position: sticky; top:0; z-index:2;
-  background: inherit; border-bottom:1px solid var(--border);
-  padding: 12px 16px;
-}
-#sidebarRight .sb-mid{ padding: 12px 16px; overflow:auto; }
-#sidebarRight .rs-pane + .rs-pane{ margin-top:16px; }
-#sidebarRight .rs-pane .eyebrow{ font-size:.95em; opacity:.9; margin:0 0 8px; }
-#sidebarRight ul{ padding-left: 18px; margin: 0 0 8px; }
-#sidebarRight li{ margin: 2px 0; }
-#sidebarRight .replybar{
-  position: sticky; bottom:0; z-index:2;
-  background: inherit; padding:12px 16px; border-top:1px solid var(--border);
-}
-#sidebarRight .input-el{ min-height:44px; }
-
-/* 10) Anti-overflow horizontal global */
-.layout, .center-wrap, .room, .dock{ min-width:0; max-width:100%; }
-img, video{ max-width:100%; height:auto; display:block; }
-
-/* 11) Tema: Glass HANYA panel konten; matikan di mobile utk performa */
-@media (max-width: 599px){
+/* Fallback bila UA tak dukung backdrop */
+@supports not ((-webkit-backdrop-filter: blur(0)) or (backdrop-filter: blur(0))){
   body[data-theme="glass"] .card,
   body[data-theme="glass"] .bubble,
   body[data-theme="glass"] .postcard,
   body[data-theme="glass"] .readercard,
   body[data-theme="glass"] .chatbar,
-  body[data-theme="glass"] .dock{
-    -webkit-backdrop-filter: none !important;
-    backdrop-filter: none !important;
-    background: var(--elev) !important;
-  }
+  body[data-theme="glass"] .dock{ background:var(--elev) }
 }
 
-/* 12) Tap-target & spacing konsisten */
-.tile,.btn,.btn-icon,.iconbtn,.page-item{ min-height:44px; }
+/* -------- Layout shell -------- */
+#shell{display:flex;gap:var(--sp-4);align-items:flex-start}
+.sidebar{
+  width:var(--left-w);
+  background:var(--elev);
+  border:1px solid var(--border);
+  border-radius:var(--radius-12);
+  box-shadow:var(--shadow-1);
+}
+#sidebarRight{width:var(--right-w)}
+.center{min-width:0;flex:1}
+.center-wrap{
+  width:min(100%,var(--center-max));
+  max-width:100%;
+  margin-inline:auto;
+  padding-inline:var(--center-pad);
+  padding-top:var(--sp-4);
+  padding-bottom:calc(var(--chatbar-h) + var(--safe-b));
+}
 
-/* 13) (opsional) scrollbar tipis & aksesibel */
-*{ scrollbar-width:thin; scrollbar-color: color-mix(in oklab,var(--text) 40%, transparent) transparent }
-::-webkit-scrollbar{ width:8px; height:8px }
-::-webkit-scrollbar-thumb{ background-color: color-mix(in oklab,var(--text) 40%, transparent); border-radius:8px }
+/* Sidebar sections */
+.sb-top,.sb-mid,.sb-bottom{padding:var(--sp-4)}
+.eyebrow{font-size:.92rem;font-weight:700;margin:var(--sp-3) 0 var(--sp-2)}
+.muted{color:var(--muted)}
+
+/* Sticky footer in sidebars */
+.sidebar{display:flex;flex-direction:column;min-height:0}
+.sb-mid{flex:1 1 auto;min-height:0;overflow:auto}
+.sb-bottom{position:sticky;bottom:0;border-top:1px solid var(--border);background:var(--elev)}
+
+/* Socials row */
+.socials{display:flex;gap:10px;flex-wrap:wrap}
+.socials a{display:inline-flex;align-items:center;justify-content:center;
+  width:28px;height:28px;border:1px solid var(--border);border-radius:8px}
+
+/* -------- Components: button/tile/card -------- */
+.btn,.btn-icon,.iconbtn,.page-item,.tile{
+  display:inline-flex;align-items:center;gap:8px;cursor:pointer;
+  min-height:44px; min-width:44px;
+  padding:8px 12px; border:1px solid var(--border);
+  border-radius:var(--radius-10); background:var(--elev)
+}
+.btn{background:var(--accent);border-color:transparent;color:#fff}
+.btn:hover{filter:brightness(.98)}
+.btn-icon,.iconbtn{background:var(--elev)}
+.tile{background:var(--elev)}
+.card{background:var(--elev);border:1px solid var(--border);border-radius:var(--radius-12);box-shadow:var(--shadow-1);padding:var(--sp-4)}
+.actions{display:flex;gap:var(--sp-2);flex-wrap:wrap;margin-top:var(--sp-3)}
+.meta{color:var(--muted);font-size:.92rem;display:flex;gap:var(--sp-3);flex-wrap:wrap;align-items:center}
+
+/* -------- Label 2-level -------- */
+.label-list{display:grid;gap:var(--sp-2)}
+.label-item{border:1px solid var(--border);border-radius:var(--radius-12);background:var(--elev);overflow:hidden}
+.label-item summary{
+  display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;gap:var(--sp-2);
+  padding:10px 12px;list-style:none;user-select:none;cursor:pointer
+}
+.label-item summary::-webkit-details-marker{display:none}
+.label-item .label-name{font-weight:700}
+.label-item .count{color:var(--muted);font-size:.9rem}
+.label-item .chev{opacity:.75;transition:transform .2s ease}
+.label-item[open] .chev{transform:rotate(180deg)}
+.label-item[open] summary{box-shadow:0 0 0 2px color-mix(in oklab,var(--focus) 18%,transparent) inset}
+.label-item .acc{display:grid;gap:var(--sp-2);padding:var(--sp-2);border-top:1px solid var(--border)}
+.label-item .acc li{list-style:none}
+.page-item{width:100%;text-align:left;display:grid;grid-template-columns:auto 1fr;gap:var(--sp-2)}
+
+/* -------- Dockbar (top-sheet style) -------- */
+.dock{border:1px solid var(--border);border-radius:var(--radius-12);background:var(--elev);padding:var(--sp-4);margin-bottom:var(--sp-4)}
+.dock-head{display:flex;align-items:center;justify-content:space-between;margin-top:var(--sp-4)}
+.dock-title{display:flex;align-items:center;gap:8px}
+.dock-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--sp-3)}
+fieldset.tile{border:1px solid var(--border);border-radius:var(--radius-10);margin:0;padding:8px 12px;display:inline-flex;align-items:center;gap:12px}
+fieldset.tile legend{padding:0;margin:0}
+.tile input[type="range"]{width:100%}
+
+/* -------- Room/Feed/SmartScroll -------- */
+.feed,.room,.dock,.center,.center-wrap{min-width:0;max-width:100%}
+#smartScroll{position:sticky;bottom:calc(var(--chatbar-h) + 12px);margin-left:auto}
+#smartScroll[hidden]{display:none}
+
+/* -------- Cards: Postcard & Readercard -------- */
+.postcard,.readercard{margin:var(--sp-4) 0}
+.thumb{border:1px solid var(--border);border-radius:var(--radius-10);overflow:hidden;margin:var(--sp-2) 0}
+.media{display:block;width:100%;height:auto;object-fit:cover}
+.postcard h3{margin:.4rem 0}
+.readercard header h2{margin:.2rem 0 .4rem}
+.readercard .body{overflow-wrap:anywhere}
+
+/* -------- Bubble (chat) + tail siku -------- */
+.bubble{position:relative;padding:12px 14px;border:1px solid var(--border);border-radius:14px;background:var(--elev);max-width:65ch;margin:var(--sp-3) 0}
+.bubble[data-role="system"]{border-style:dashed;color:var(--muted)}
+/* tail kanan (default) */
+.bubble::after{
+  content:""; position:absolute; right:-1px; top:14px; width:10px; height:10px;
+  background:var(--elev); border-right:1px solid var(--border); border-top:1px solid var(--border);
+  transform:rotate(45deg)
+}
+/* tail kiri (tambahkan .tail-left bila perlu) */
+.bubble.tail-left{margin-left:24px}
+.bubble.tail-left::after{left:-1px; right:auto; border-right:none; border-top:1px solid var(--border); border-left:1px solid var(--border)}
+
+/* -------- Chatbar -------- */
+.chatbar{position:sticky;bottom:0;z-index:10;background:var(--elev);border:1px solid var(--border);
+  border-radius:var(--radius-12);padding:var(--sp-3);margin:var(--sp-3) 0}
+.chat-form{display:flex;gap:var(--sp-2);align-items:center}
+.chat-form input[type="text"]{flex:1;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-10);background:var(--elev)}
+
+/* -------- Sidebar Right polish -------- */
+#sidebarRight .sb-top{border-bottom:1px solid var(--border)}
+#sidebarRight .rs-pane{background:var(--elev);border:1px solid var(--border);border-radius:var(--radius-12);padding:var(--sp-3);margin-bottom:var(--sp-3)}
+#sidebarRight .rs-pane h3{margin:.2rem 0 .6rem}
+#sidebarRight ul{padding-left:1.1rem;margin:0}
+#sidebarRight li{margin:.25rem 0}
+.replybar .btn{display:inline-flex;align-items:center;gap:8px}
+
+/* -------- Aspect ratio (anti-CLS) -------- */
+.ar-1-1{aspect-ratio:1/1}
+.ar-4-5{aspect-ratio:4/5}
+.ar-3-4{aspect-ratio:3/4}
+.ar-16-9{aspect-ratio:16/9}
+.ar-9-16{aspect-ratio:9/16}
+
+/* -------- Scrollbar (desktop) -------- */
+*{scrollbar-width:thin; scrollbar-color: color-mix(in oklab,var(--text) 40%, transparent) transparent}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background-color:color-mix(in oklab,var(--text) 40%, transparent);border-radius:8px}
 @media (hover:hover){
-  ::-webkit-scrollbar-thumb:hover{ background-color: color-mix(in oklab,var(--text) 60%, transparent) }
+  ::-webkit-scrollbar-thumb:hover{background-color:color-mix(in oklab,var(--text) 60%, transparent)}
+}
+
+/* -------- Responsive layout -------- */
+
+/* ≤ 599px: stack 1 kolom */
+@media (max-width:599px){
+  #shell{flex-direction:column}
+  .sidebar{width:auto}
+  .dock-grid{grid-template-columns:1fr}
+  .iconbtn span,.btn span{display:none}
+}
+
+/* 600–1023px: 2 kolom (Left + Center), Right full width di bawah */
+@media (min-width:600px) and (max-width:1023px){
+  #shell{
+    display:grid;
+    grid-template-columns: var(--left-w) 1fr;
+    grid-template-areas:
+      "left center"
+      "right right";
+    gap: var(--sp-4);
+  }
+  #sidebarLeft{ grid-area:left }
+  #centerbar  { grid-area:center }
+  #sidebarRight{ grid-area:right; width:auto }
+  .dock-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
+/* ≥ 1024px: 3 kolom */
+@media (min-width:1024px){
+  #shell{
+    display:grid;
+    grid-template-columns: var(--left-w) minmax(0,1fr) var(--right-w);
+    gap: var(--sp-4);
+  }
+  .dock-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .center-wrap{padding-inline:calc(var(--center-pad) + 4px)}
+}
+
+/* -------- Print & motion -------- */
+@media print{
+  .room > *{content-visibility:visible;contain-intrinsic-size:auto}
+  .sidebar,.dock,.chatbar{display:none}
+  body{background:#fff;color:#000}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important;scroll-behavior:auto}
+}
+
+/* -------- Content-visibility (perf, aman) -------- */
+@supports (content-visibility:auto){
+  .room > *{content-visibility:auto;contain-intrinsic-size:auto 560px}
 }
