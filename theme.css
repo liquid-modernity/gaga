@@ -247,3 +247,38 @@ body[data-theme="glass"] .bubble{
 @media (prefers-reduced-motion: reduce){
   *{animation:none!important; transition:none!important}
 }
+
+/* ===== FIX 1: Dockbar responsive */
+.dock{ width:100%; }
+.dock .dock-grid{
+  /* auto-fit: baris akan menyesuaikan, tidak mepet */
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-auto-flow: dense;
+}
+.tile{ min-width:0; }                           /* biar bisa menyusut */
+.tile span{ white-space:nowrap; }               /* label pendek tetap 1 baris */
+.tile fieldset{ display:flex; gap:12px; border:0; padding:0; margin:0; }
+.tile label{ display:inline-flex; align-items:center; gap:6px; }
+
+/* Breakpoint tambahan utk ponsel mini */
+@media (max-width:360px){
+  .dock .dock-grid{ grid-template-columns: 1fr; }
+}
+
+/* ===== FIX 2: aktifkan container queries utk area aksi */
+.postcard,
+.readercard .actions{ container-type:inline-size; }
+
+@container (max-width:560px){
+  .postcard .actions .iconbtn span,
+  .readercard .actions .iconbtn span{ display:none; }
+  .postcard .actions .iconbtn,
+  .readercard .actions .iconbtn{ padding:8px; }
+}
+
+/* ===== FIX 3: ruang bawah cukup agar tidak “nyundul” chatbar */
+.center-wrap{ padding-bottom: calc(var(--chatbar-h) + 24px); }
+
+/* ===== FIX 4 (opsional): cegah tombol jadi 2 baris */
+.iconbtn span{ white-space:nowrap; }
+
