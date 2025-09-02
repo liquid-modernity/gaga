@@ -399,3 +399,86 @@ fieldset.tile legend{padding:0;margin:0}
   .table-scroller:focus-visible{ box-shadow:0 0 0 3px #0044ff; }
   .post-body thead th{ background:#eee; }
 }
+
+/* ================ PROFILE CARD (compact + verified) ================ */
+.profile-card{
+  display:flex; align-items:center; gap:12px;
+  padding:12px 14px;
+  border:1px solid var(--border); background:var(--elev); border-radius:12px;
+}
+.profile-card .avatar-wrap{position:relative; width:56px; height:56px; flex:0 0 56px}
+.profile-card .avatar{
+  width:100%; height:100%; border-radius:50%; display:block; object-fit:cover;
+  box-shadow:0 0 0 3px var(--bg); /* ring mengikuti tema */
+}
+.profile-card .verify{
+  position:absolute; right:-2px; bottom:-2px; width:18px; height:18px; border-radius:50%;
+  display:grid; place-items:center;
+  color:#fff; background:#2F6BFF; box-shadow:0 2px 6px rgba(0,0,0,.25);
+  border:2px solid var(--bg);
+}
+.profile-card .p-name{font-weight:700}
+.profile-card .p-desc{color:var(--muted); margin-top:2px; line-height:1.35}
+
+/* ================ CHATBAR (in-field actions) ======================= */
+.chatbar{margin-top:var(--sp-3)}
+.chat-form{display:block}
+.chat-input{
+  position:relative; display:flex; align-items:center;
+  border:1px solid var(--border); background:var(--elev); border-radius:999px;
+  padding:6px 12px; min-height:48px;
+}
+.chat-input input{
+  flex:1; border:0; background:transparent; outline:0;
+  padding:10px 112px 10px 40px; font-size:16px; line-height:1.4; color:var(--text);
+}
+.chat-input .inbtn{
+  position:absolute; display:grid; place-items:center; width:36px; height:36px;
+  border:0; background:transparent; color:var(--muted); border-radius:18px; cursor:pointer;
+}
+.chat-input .inbtn:hover{ background:color-mix(in oklab, var(--text) 8%, transparent) }
+.chat-input .inbtn:focus-visible{ outline:2px solid var(--focus); outline-offset:2px }
+.chat-input .menu{ left:6px }
+.chat-input .gear{ right:6px }
+.chat-input .send{ right:48px; color:#2F6BFF }       /* aksen kirim */
+.chat-input .clear{ right:84px }
+.chat-note{ margin:6px 8px 0; text-align:center; font-size:.85rem; color:var(--muted) }
+
+/* ================ REPLY / KOMENTAR (Sidebar Right) ================= */
+.replybar{
+  display:flex; gap:8px; align-items:center;
+  border:1px solid var(--border); background:var(--elev); border-radius:12px;
+  padding:8px;
+}
+.replybar .input-el{
+  flex:1; border:0; background:transparent; padding:10px 12px; border-radius:8px;
+  color:var(--text);
+}
+.replybar .btn, .replybar .btn-infield{
+  min-height:40px; padding:0 14px; border-radius:10px; border:0;
+  background:#2F6BFF; color:#fff; font-weight:600; cursor:pointer;
+}
+.replybar .btn:hover{ filter:brightness(1.05) }
+.replybar .btn:focus-visible{ outline:2px solid var(--focus); outline-offset:2px }
+
+/* ================ SHEET HANDLE (Dockbar & Right Panel) ============= */
+.sheet-handle{
+  width:40px; height:4px; border-radius:999px; margin:8px auto;
+  background:color-mix(in oklab, var(--text) 18%, transparent);
+}
+@media (min-width:1024px){
+  /* di desktop tetap tampil kecil agar konsisten */
+  .sheet-handle{ margin-top:6px }
+}
+
+/* Sentuhan kecil di grid Dockbar agar rapih saat sempit */
+@media (max-width:599px){
+  .dock-grid{ grid-template-columns:1fr !important }
+}
+
+/* Icon ukuran konsisten */
+.iconbtn svg, .btn-icon svg, .inbtn svg { width:1.1rem; height:1.1rem }
+
+/* Kontras placeholder */
+::placeholder{ color:color-mix(in oklab, var(--text) 45%, transparent) }
+
